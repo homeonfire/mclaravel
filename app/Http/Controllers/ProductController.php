@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\BehavioralStat;
+use Illuminate\Support\Carbon;
 
 class ProductController extends Controller
 {
@@ -28,58 +30,128 @@ class ProductController extends Controller
             'products' => $products,
         ]);
     }
-    public function show(Product $product)
+    /**
+     * Отображает детальную страницу продукта со всей статистикой.
+     */
+    /**
+     * Отображает детальную страницу продукта со всей статистикой.
+     */
+    public function show(Request $request, Product $product)
     {
         $product->load('adCampaigns');
-        // ИСПРАВЛЕНИЕ ЗДЕСЬ: Вычисляем, отслеживает ли текущий пользователь этот товар
         $isTracked = auth()->user()->trackedProducts()->where('nmID', $product->nmID)->exists();
 
-        // --- Получаем данные для графика и таблицы ---
-        $stats = DB::table('behavioral_stats')
-            ->where('nmID', $product->nmID)
+        // --- 1. ДАННЫЕ ДЛЯ СВОДКИ ЗА ВЧЕРАШНИЙ ДЕНЬ ---
+        $yesterdayStats = BehavioralStat::where('nmID', $product->nmID)
+            ->where('store_id', $product->store_id)
+            ->whereDate('report_date', now()->subDay())
+            ->first();
+
+        $dayBeforeYesterdayStats = BehavioralStat::where('nmID', $product->nmID)
+            ->where('store_id', $product->store_id)
+            ->whereDate('report_date', now()->subDays(2))
+            ->first();
+
+        // --- 2. СТАТИСТИКА ЗА 7 ДНЕЙ (ДЛЯ ПЕРВОЙ ТАБЛИЦЫ И ГРАФИКА) ---
+        $stats = BehavioralStat::where('nmID', $product->nmID)
             ->where('store_id', $product->store_id)
             ->orderBy('report_date', 'desc')
             ->limit(7)
             ->get();
 
-        // Готовим данные для Chart.js
         $chartData = [
             'labels' => $stats->pluck('report_date')->reverse()->values()->map(function ($date) {
-                return \Carbon\Carbon::parse($date)->format('d.m');
+                return Carbon::parse($date)->format('d.m');
             }),
             'datasets' => [
-                [
-                    'label' => 'Переходы в карточку',
-                    'data' => $stats->pluck('openCardCount')->reverse()->values(),
-                    'borderColor' => '#3b82f6',
-                    'tension' => 0.1
-                ],
-                [
-                    'label' => 'Добавления в корзину',
-                    'data' => $stats->pluck('addToCartCount')->reverse()->values(),
-                    'borderColor' => '#a855f7',
-                    'tension' => 0.1
-                ],
-                [
-                    'label' => 'Заказы',
-                    'data' => $stats->pluck('ordersCount')->reverse()->values(),
-                    'borderColor' => '#22c55e',
-                    'tension' => 0.1
-                ]
+                ['label' => 'Переходы в карточку', 'data' => $stats->pluck('openCardCount')->reverse()->values(), 'borderColor' => '#3b82f6', 'tension' => 0.1],
+                ['label' => 'Добавления в корзину', 'data' => $stats->pluck('addToCartCount')->reverse()->values(), 'borderColor' => '#a855f7', 'tension' => 0.1],
+                ['label' => 'Заказы', 'data' => $stats->pluck('ordersCount')->reverse()->values(), 'borderColor' => '#22c55e', 'tension' => 0.1]
             ]
         ];
 
-        // Готовим данные для таблицы
         $statsWithComparison = $stats->map(function ($item, $key) use ($stats) {
             $item->previous = $stats->get($key + 1);
             return $item;
         });
 
+        // --- 3. ДАННЫЕ ДЛЯ СВОДНОЙ ТАБЛИЦЫ ЗА ТЕКУЩИЙ МЕСЯЦ ---
+        $monthlyStats = BehavioralStat::where('nmID', $product->nmID)
+            ->where('store_id', $product->store_id)
+            ->whereMonth('report_date', now()->month)
+            ->whereYear('report_date', now()->year)
+            ->orderBy('report_date', 'asc')
+            ->get();
+
+        $previousMonthStats = BehavioralStat::where('nmID', $product->nmID)
+            ->where('store_id', $product->store_id)
+            ->whereBetween('report_date', [now()->subMonthNoOverflow()->startOfMonth(), now()->subMonthNoOverflow()->endOfMonth()])
+            ->get();
+
+        $datesForPivot = $monthlyStats->pluck('report_date')->unique()->map(function ($date) {
+            return Carbon::parse($date)->format('d.m');
+        });
+
+        $pivotedData = $this->pivotData($monthlyStats);
+
+        // --- 4. ДАННЫЕ ДЛЯ ТАБЛИЦЫ С ВЫБОРОМ ПЕРИОДА ---
+        if ($request->has('start_date') && $request->has('end_date') && $request->start_date && $request->end_date) {
+            $startDate = Carbon::parse($request->input('start_date'));
+            $endDate = Carbon::parse($request->input('end_date'));
+        } else {
+            $startDate = now()->subMonthNoOverflow()->startOfMonth();
+            $endDate = now()->subMonthNoOverflow()->endOfMonth();
+        }
+
+        $durationInDays = $endDate->diffInDays($startDate);
+        $previousPeriodStartDate = $startDate->copy()->subDays($durationInDays + 1);
+        $previousPeriodEndDate = $startDate->copy()->subDay();
+
+        $customPeriodStats = BehavioralStat::where('nmID', $product->nmID)
+            ->where('store_id', $product->store_id)
+            ->whereBetween('report_date', [$startDate, $endDate])
+            ->orderBy('report_date', 'asc')->get();
+
+        $previousCustomPeriodStats = BehavioralStat::where('nmID', $product->nmID)
+            ->where('store_id', $product->store_id)
+            ->whereBetween('report_date', [$previousPeriodStartDate, $previousPeriodEndDate])
+            ->get();
+
+        $datesForCustomPivot = $customPeriodStats->pluck('report_date')->unique()->map(function ($date) {
+            return Carbon::parse($date)->format('d.m');
+        });
+
+        $pivotedCustomData = $this->pivotData($customPeriodStats);
+
+        // --- 5. ОБЩИЙ СПИСОК МЕТРИК ДЛЯ ОБЕИХ СВОДНЫХ ТАБЛИЦ ---
+        $metricsForPivot = [
+            'openCardCount' => 'Переходы', 'addToCartCount' => 'В корзину',
+            'ordersCount' => 'Заказы, шт', 'buyoutsCount' => 'Выкупы, шт', 'cancelCount' => 'Отмены, шт',
+            'ordersSumRub' => 'Сумма заказов, ₽', 'buyoutsSumRub' => 'Сумма выкупов, ₽', 'cancelSumRub' => 'Сумма отмен, ₽',
+            'avgPriceRub' => 'Ср. цена, ₽', 'conversion_to_cart' => 'Конверсия в корзину, %',
+            'conversion_cart_to_order' => 'Конверсия в заказ, %', 'conversion_click_to_order' => 'Конверсия из клика в заказ, %',
+        ];
+
         return view('products.show', [
             'product' => $product,
+            'yesterdayStats' => $yesterdayStats,
+            'dayBeforeYesterdayStats' => $dayBeforeYesterdayStats,
             'chartData' => json_encode($chartData),
             'stats' => $statsWithComparison,
-            'isTracked' => $isTracked // <-- И ПЕРЕДАЕМ ЭТОТ ФЛАГ В ПРЕДСТАВЛЕНИЕ
+            'isTracked' => $isTracked,
+            // Данные для месячной таблицы
+            'monthlyStats' => $monthlyStats,
+            'previousMonthStats' => $previousMonthStats,
+            'datesForPivot' => $datesForPivot,
+            'pivotedData' => $pivotedData,
+            'metricsForPivot' => $metricsForPivot,
+            // Данные для кастомной таблицы
+            'customPeriodStats' => $customPeriodStats,
+            'previousCustomPeriodStats' => $previousCustomPeriodStats,
+            'datesForCustomPivot' => $datesForCustomPivot,
+            'pivotedCustomData' => $pivotedCustomData,
+            'startDate' => $startDate->toDateString(),
+            'endDate' => $endDate->toDateString(),
         ]);
     }
 
@@ -92,5 +164,32 @@ class ProductController extends Controller
         $user->trackedProducts()->toggle($product->nmID);
 
         return back()->with('status', 'Статус отслеживания изменен!');
+    }
+
+    /**
+     * Вспомогательная функция для "переворачивания" данных и расчета конверсий.
+     */
+    /**
+     * Вспомогательная функция для "переворачивания" данных и расчета конверсий.
+     */
+    private function pivotData($statsCollection)
+    {
+        $pivotedData = [];
+        foreach ($statsCollection as $stat) {
+            $dateKey = Carbon::parse($stat->report_date)->format('d.m');
+
+            // *** КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ ЗДЕСЬ ***
+            // Используем ->getAttributes() для получения чистого массива данных из модели
+            $statArray = $stat->getAttributes();
+
+            foreach ($statArray as $column => $value) {
+                $pivotedData[$column][$dateKey] = $value;
+            }
+            // Расчет конверсий остается без изменений
+            $pivotedData['conversion_to_cart'][$dateKey] = ($stat->openCardCount > 0) ? ($stat->addToCartCount / $stat->openCardCount) * 100 : 0;
+            $pivotedData['conversion_cart_to_order'][$dateKey] = ($stat->addToCartCount > 0) ? ($stat->ordersCount / $stat->addToCartCount) * 100 : 0;
+            $pivotedData['conversion_click_to_order'][$dateKey] = ($stat->openCardCount > 0) ? ($stat->ordersCount / $stat->openCardCount) * 100 : 0;
+        }
+        return $pivotedData;
     }
 }

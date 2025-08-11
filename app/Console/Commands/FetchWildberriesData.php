@@ -26,7 +26,7 @@ class FetchWildberriesData extends Command
     public function handle()
     {
         // --- Укажите стартовую дату ---
-        $startDate = Carbon::parse('2025-07-15'); // Пример
+        $startDate = Carbon::parse('2025-06-01'); // Пример
         // --------------------------------
 
         $endDate = Carbon::today();
@@ -86,8 +86,8 @@ class FetchWildberriesData extends Command
                 }
 
                 if (!$date->isSameDay($endDate)) {
-                    $this->info("Пауза 30 секунд...");
-                    sleep(30);
+                    $this->info("Пауза 60 секунд...");
+                    sleep(61);
                 }
             }
         }
