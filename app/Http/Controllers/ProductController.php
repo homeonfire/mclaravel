@@ -55,18 +55,29 @@ class ProductController extends Controller
         // --- 2. СТАТИСТИКА ЗА 7 ДНЕЙ (ДЛЯ ПЕРВОЙ ТАБЛИЦЫ И ГРАФИКА) ---
         $stats = BehavioralStat::where('nmID', $product->nmID)
             ->where('store_id', $product->store_id)
-            ->orderBy('report_date', 'desc')
-            ->limit(7)
+            ->whereMonth('report_date', now()->month)
+            ->whereYear('report_date', now()->year)
+            ->orderBy('report_date', 'asc')
             ->get();
 
         $chartData = [
-            'labels' => $stats->pluck('report_date')->reverse()->values()->map(function ($date) {
+            'labels' => $stats->pluck('report_date')->values()->map(function ($date) {
                 return Carbon::parse($date)->format('d.m');
             }),
             'datasets' => [
-                ['label' => 'Переходы в карточку', 'data' => $stats->pluck('openCardCount')->reverse()->values(), 'borderColor' => '#3b82f6', 'tension' => 0.1],
-                ['label' => 'Добавления в корзину', 'data' => $stats->pluck('addToCartCount')->reverse()->values(), 'borderColor' => '#a855f7', 'tension' => 0.1],
-                ['label' => 'Заказы', 'data' => $stats->pluck('ordersCount')->reverse()->values(), 'borderColor' => '#22c55e', 'tension' => 0.1]
+                // --- ОСНОВНЫЕ МЕТРИКИ (КОЛИЧЕСТВО) ---
+                [ 'label' => 'Переходы в карточку', 'yAxisID' => 'y', 'data' => $stats->pluck('openCardCount'), 'borderColor' => '#3b82f6', 'tension' => 0.1 ],
+                [ 'label' => 'Добавления в корзину', 'yAxisID' => 'y', 'data' => $stats->pluck('addToCartCount'), 'borderColor' => '#a855f7', 'tension' => 0.1 ],
+
+                // --- ШКАЛА ДЛЯ МАЛЕНЬКИХ МЕТРИК ---
+                [ 'label' => 'Заказы, шт', 'yAxisID' => 'y2', 'data' => $stats->pluck('ordersCount'), 'borderColor' => '#22c55e', 'tension' => 0.1 ],
+                [ 'label' => 'Выкупы, шт', 'yAxisID' => 'y2', 'data' => $stats->pluck('buyoutsCount'), 'borderColor' => '#14b8a6', 'tension' => 0.1, 'hidden' => true ], // Скрыт по умолчанию
+                [ 'label' => 'Отмены, шт', 'yAxisID' => 'y2', 'data' => $stats->pluck('cancelCount'), 'borderColor' => '#ef4444', 'tension' => 0.1, 'hidden' => true ], // Скрыт по умолчанию
+
+                // --- ФИНАНСОВЫЕ МЕТРИКИ (СУММЫ В РУБЛЯХ) ---
+                // Используем вторую ось Y для сумм, чтобы масштабы не конфликтовали
+                [ 'label' => 'Сумма заказов, ₽', 'yAxisID' => 'y1', 'data' => $stats->pluck('ordersSumRub'), 'borderColor' => '#f59e0b', 'tension' => 0.1, 'hidden' => true ],
+                [ 'label' => 'Сумма выкупов, ₽', 'yAxisID' => 'y1', 'data' => $stats->pluck('buyoutsSumRub'), 'borderColor' => '#f97316', 'tension' => 0.1, 'hidden' => true ],
             ]
         ];
 
@@ -74,6 +85,9 @@ class ProductController extends Controller
             $item->previous = $stats->get($key + 1);
             return $item;
         });
+
+        // --- *** КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: ГОТОВИМ ДАТЫ С ДНЯМИ НЕДЕЛИ *** ---
+        $dayMap = ['ВС', 'ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ'];
 
         // --- 3. ДАННЫЕ ДЛЯ СВОДНОЙ ТАБЛИЦЫ ЗА ТЕКУЩИЙ МЕСЯЦ ---
         $monthlyStats = BehavioralStat::where('nmID', $product->nmID)
@@ -88,8 +102,9 @@ class ProductController extends Controller
             ->whereBetween('report_date', [now()->subMonthNoOverflow()->startOfMonth(), now()->subMonthNoOverflow()->endOfMonth()])
             ->get();
 
-        $datesForPivot = $monthlyStats->pluck('report_date')->unique()->map(function ($date) {
-            return Carbon::parse($date)->format('d.m');
+        $datesForPivot = $monthlyStats->pluck('report_date')->unique()->map(function ($dateString) use ($dayMap) {
+            $carbonDate = Carbon::parse($dateString);
+            return ['full_date' => $carbonDate->format('d.m'), 'day_of_week' => $dayMap[$carbonDate->dayOfWeek]];
         });
 
         $pivotedData = $this->pivotData($monthlyStats);
@@ -117,8 +132,9 @@ class ProductController extends Controller
             ->whereBetween('report_date', [$previousPeriodStartDate, $previousPeriodEndDate])
             ->get();
 
-        $datesForCustomPivot = $customPeriodStats->pluck('report_date')->unique()->map(function ($date) {
-            return Carbon::parse($date)->format('d.m');
+        $datesForCustomPivot = $customPeriodStats->pluck('report_date')->unique()->map(function ($dateString) use ($dayMap) {
+            $carbonDate = Carbon::parse($dateString);
+            return ['full_date' => $carbonDate->format('d.m'), 'day_of_week' => $dayMap[$carbonDate->dayOfWeek]];
         });
 
         $pivotedCustomData = $this->pivotData($customPeriodStats);
@@ -139,13 +155,11 @@ class ProductController extends Controller
             'chartData' => json_encode($chartData),
             'stats' => $statsWithComparison,
             'isTracked' => $isTracked,
-            // Данные для месячной таблицы
             'monthlyStats' => $monthlyStats,
             'previousMonthStats' => $previousMonthStats,
             'datesForPivot' => $datesForPivot,
             'pivotedData' => $pivotedData,
             'metricsForPivot' => $metricsForPivot,
-            // Данные для кастомной таблицы
             'customPeriodStats' => $customPeriodStats,
             'previousCustomPeriodStats' => $previousCustomPeriodStats,
             'datesForCustomPivot' => $datesForCustomPivot,
