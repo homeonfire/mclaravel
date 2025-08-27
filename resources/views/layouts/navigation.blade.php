@@ -12,15 +12,8 @@
                     <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
                         {{ __('Дашборд') }}
                     </x-nav-link>
-                    <x-nav-link :href="route('reports.daily')" :active="request()->routeIs('reports.daily')">
-                        {{ __('Отчет по продажам') }}
-                    </x-nav-link>
-
-                    <x-nav-link :href="route('reports.orders')" :active="request()->routeIs('reports.orders')">
-                        {{ __('Отчет по заказам') }}
-                    </x-nav-link>
-                    <x-nav-link :href="route('reports.behavioral')" :active="request()->routeIs('reports.behavioral')">
-                        {{ __('Поведенческий отчет') }}
+                    <x-nav-link :href="route('planning.index')" :active="request()->routeIs('planning.index')">
+                        {{ __('План/факт') }}
                     </x-nav-link>
                     <x-nav-link :href="route('products.index')" :active="request()->routeIs('products.index')">
                         {{ __('Товары') }}
