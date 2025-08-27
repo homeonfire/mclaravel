@@ -15,24 +15,49 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
-        // Получаем поисковый запрос из URL
+        // 1. Получаем все параметры для фильтрации из URL
         $searchQuery = $request->input('search');
+        $storeId = $request->input('store_id');
 
-        $products = Product::query()
-            ->when($searchQuery, function ($query, $search) {
-                // Если есть поисковый запрос, ищем по vendorCode
-                return $query->where('vendorCode', 'like', "%{$search}%");
+        // 2. Получаем список всех магазинов для выпадающего списка
+        $stores = DB::table('stores')->orderBy('store_name')->get();
+
+        // 3. Создаем сложный подзапрос, который найдет для каждого товара
+        //    статистику за самый последний доступный день.
+        $latestStatsSubquery = DB::table('behavioral_stats as bs1')
+            ->select('bs1.nmID', 'bs1.store_id', 'bs1.openCardCount')
+            ->join(DB::raw('(SELECT nmID, store_id, MAX(report_date) as max_date FROM behavioral_stats GROUP BY nmID, store_id) as bs2'), function($join) {
+                $join->on('bs1.nmID', '=', 'bs2.nmID')
+                    ->on('bs1.store_id', '=', 'bs2.store_id')
+                    ->on('bs1.report_date', '=', 'bs2.max_date');
+            });
+
+        // 4. Строим основной запрос, присоединяя к нему подзапрос
+        $productsQuery = Product::with('store')
+            ->leftJoinSub($latestStatsSubquery, 'latest_stats', function ($join) {
+                $join->on('products.nmID', '=', 'latest_stats.nmID')
+                    ->on('products.store_id', '=', 'latest_stats.store_id');
             })
-            ->orderBy('updated_at', 'desc') // Сортируем по дате обновления
-            ->paginate(30); // Разбиваем на страницы по 30 товаров
+            ->select('products.*', DB::raw('COALESCE(latest_stats.openCardCount, 0) as latest_day_views'))
+            ->when($searchQuery, function ($query, $search) {
+                return $query->where('products.vendorCode', 'like', "%{$search}%");
+            })
+            ->when($storeId, function ($query, $storeId) {
+                return $query->where('products.store_id', $storeId);
+            });
+
+        // 5. Сортируем: сначала по просмотрам за последний день, затем по дате обновления
+        $products = $productsQuery->orderBy('latest_day_views', 'desc')
+            ->orderBy('products.updated_at', 'desc')
+            ->paginate(30);
 
         return view('products.index', [
             'products' => $products,
+            'stores' => $stores,
+            'selectedStoreId' => $storeId,
         ]);
     }
-    /**
-     * Отображает детальную страницу продукта со всей статистикой.
-     */
+
     /**
      * Отображает детальную страницу продукта со всей статистикой.
      */
