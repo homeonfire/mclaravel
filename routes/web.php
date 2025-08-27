@@ -3,6 +3,7 @@
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PlanningController; // Добавьте это вверху файла
 
 Route::get('/', function () {
     return view('welcome');
@@ -22,6 +23,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/products/{product}/toggle-tracking', [App\Http\Controllers\ProductController::class, 'toggleTracking'])->name('products.toggleTracking');
     Route::get('/advertising', [App\Http\Controllers\AdCampaignController::class, 'index'])->name('advertising.index');
     Route::get('/advertising/{campaign}', [App\Http\Controllers\AdCampaignController::class, 'show'])->name('advertising.show');
+    Route::get('/planning', [PlanningController::class, 'index'])->name('planning.index');
+    Route::post('/planning', [PlanningController::class, 'store'])->name('planning.store');
 });
 
 require __DIR__.'/auth.php';
