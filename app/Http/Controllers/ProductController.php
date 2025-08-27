@@ -15,15 +15,15 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
-        // 1. Получаем все параметры для фильтрации из URL
+        // 1. Получаем все параметры для фильтрации, включая новый флаг
         $searchQuery = $request->input('search');
         $storeId = $request->input('store_id');
+        $withActiveCampaign = $request->boolean('with_active_campaign'); // Удобный метод для получения true/false
 
         // 2. Получаем список всех магазинов для выпадающего списка
         $stores = DB::table('stores')->orderBy('store_name')->get();
 
-        // 3. Создаем сложный подзапрос, который найдет для каждого товара
-        //    статистику за самый последний доступный день.
+        // 3. Создаем подзапрос для получения статистики за последнюю доступную дату
         $latestStatsSubquery = DB::table('behavioral_stats as bs1')
             ->select('bs1.nmID', 'bs1.store_id', 'bs1.openCardCount')
             ->join(DB::raw('(SELECT nmID, store_id, MAX(report_date) as max_date FROM behavioral_stats GROUP BY nmID, store_id) as bs2'), function($join) {
@@ -32,7 +32,7 @@ class ProductController extends Controller
                     ->on('bs1.report_date', '=', 'bs2.max_date');
             });
 
-        // 4. Строим основной запрос, присоединяя к нему подзапрос
+        // 4. Строим основной запрос
         $productsQuery = Product::with('store')
             ->leftJoinSub($latestStatsSubquery, 'latest_stats', function ($join) {
                 $join->on('products.nmID', '=', 'latest_stats.nmID')
@@ -44,9 +44,26 @@ class ProductController extends Controller
             })
             ->when($storeId, function ($query, $storeId) {
                 return $query->where('products.store_id', $storeId);
+            })
+            // *** НОВЫЙ ФИЛЬТР ЗДЕСЬ ***
+            ->when($withActiveCampaign, function ($query) {
+                // Используем WHERE EXISTS для эффективного отбора товаров,
+                // которые существуют в таблице ad_campaign_products и связаны
+                // с кампанией в статусе 9 (активна).
+                return $query->whereExists(function ($subQuery) {
+                    $subQuery->select(DB::raw(1))
+                        ->from('ad_campaign_products as acp')
+                        ->join('ad_campaigns as ac', function($join) {
+                            $join->on('acp.advertId', '=', 'ac.advertId')
+                                ->on('acp.store_id', '=', 'ac.store_id');
+                        })
+                        ->whereColumn('acp.nmID', 'products.nmID')
+                        ->whereColumn('acp.store_id', 'products.store_id')
+                        ->where('ac.status', 9); // 9 = AdvertStatus::PLAY (активна)
+                });
             });
 
-        // 5. Сортируем: сначала по просмотрам за последний день, затем по дате обновления
+        // 5. Сортируем и разбиваем на страницы
         $products = $productsQuery->orderBy('latest_day_views', 'desc')
             ->orderBy('products.updated_at', 'desc')
             ->paginate(30);
@@ -55,6 +72,7 @@ class ProductController extends Controller
             'products' => $products,
             'stores' => $stores,
             'selectedStoreId' => $storeId,
+            'withActiveCampaign' => $withActiveCampaign, // Передаем состояние фильтра в представление
         ]);
     }
 

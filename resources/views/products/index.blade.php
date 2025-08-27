@@ -8,9 +8,12 @@
     <div class="py-12">
         <div class="max-w-full mx-auto sm:px-6 lg:px-8">
             {{-- Форма поиска и фильтрации --}}
+            {{-- Search and Filter Form --}}
             <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg mb-6">
                 <form method="GET" action="{{ route('products.index') }}" class="p-6">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+
+                        {{-- Filter by Store --}}
                         <div>
                             <label for="store_id" class="block font-medium text-sm text-gray-700 dark:text-gray-300">Магазин</label>
                             <select name="store_id" id="store_id" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
@@ -22,15 +25,26 @@
                                 @endforeach
                             </select>
                         </div>
+
+                        {{-- Search by Vendor Code --}}
                         <div>
                             <label for="search" class="block font-medium text-sm text-gray-700 dark:text-gray-300">Поиск по артикулу продавца</label>
                             <input type="text" name="search" id="search" value="{{ request('search') }}" placeholder="Введите vendorCode..." class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
                         </div>
+
+                        {{-- Filter by Active Campaign --}}
+                        <div class="flex items-center h-10"> {{-- This container helps with vertical alignment --}}
+                            <input type="checkbox" name="with_active_campaign" id="with_active_campaign" value="1" @checked($withActiveCampaign) class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+                            <label for="with_active_campaign" class="ml-2 block text-sm text-gray-900 dark:text-gray-300">Только с активной РК</label>
+                        </div>
+
+                        {{-- Submit Button --}}
                         <div>
                             <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2 bg-gray-800 dark:bg-gray-200 border border-transparent rounded-md font-semibold text-xs text-white dark:text-gray-800 uppercase tracking-widest hover:bg-gray-700 dark:hover:bg-white focus:outline-none">
                                 Применить
                             </button>
                         </div>
+
                     </div>
                 </form>
             </div>
