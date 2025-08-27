@@ -148,6 +148,62 @@ class ProductController extends Controller
             'conversion_cart_to_order' => 'Конверсия в заказ, %', 'conversion_click_to_order' => 'Конверсия из клика в заказ, %',
         ];
 
+        // A. Определяем период для рекламной таблицы: из запроса или по умолчанию (текущий месяц)
+        if ($request->has('ad_start_date') && $request->has('ad_end_date') && $request->ad_start_date && $request->ad_end_date) {
+            $adStartDate = Carbon::parse($request->input('ad_start_date'));
+            $adEndDate = Carbon::parse($request->input('ad_end_date'));
+        } else {
+            $adStartDate = now()->startOfMonth();
+            $adEndDate = now()->endOfMonth();
+        }
+
+        // B. Получаем АГРЕГИРОВАННУЮ статистику по рекламе для этого товара за выбранный период
+        $aggregatedAdStats = DB::table('ad_campaign_daily_stats as ds')
+            ->join('ad_campaign_products as ap', function($join) {
+                $join->on('ds.advertId', '=', 'ap.advertId')
+                    ->on('ds.store_id', '=', 'ap.store_id');
+            })
+            ->where('ap.nmID', $product->nmID)
+            ->where('ap.store_id', $product->store_id)
+            ->whereBetween('ds.report_date', [$adStartDate, $adEndDate])
+            ->select(
+                'ds.report_date',
+                DB::raw('SUM(ds.views) as views'),
+                DB::raw('SUM(ds.clicks) as clicks'),
+                DB::raw('SUM(ds.sum) as sum'),
+                DB::raw('SUM(ds.atbs) as atbs'),
+                DB::raw('SUM(ds.orders) as orders'),
+                DB::raw('SUM(ds.shks) as shks'),
+                DB::raw('SUM(ds.sum_price) as sum_price')
+            )
+            ->groupBy('ds.report_date')
+            ->orderBy('ds.report_date', 'asc')
+            ->get();
+
+        // C. "Переворачиваем" агрегированные данные для удобного отображения
+        $pivotedAdData = [];
+        foreach ($aggregatedAdStats as $stat) {
+            $dateKey = Carbon::parse($stat->report_date)->format('d.m');
+            $stat->ctr = ($stat->views > 0) ? ($stat->clicks / $stat->views) * 100 : 0;
+            $stat->cpc = ($stat->clicks > 0) ? ($stat->sum / $stat->clicks) : 0;
+
+            $statArray = (array)$stat;
+            foreach ($statArray as $column => $value) {
+                $pivotedAdData[$column][$dateKey] = $value;
+            }
+        }
+
+        $datesForAdPivot = $aggregatedAdStats->pluck('report_date')->unique()->map(function ($dateString) use ($dayMap) {
+            $carbonDate = Carbon::parse($dateString);
+            return ['full_date' => $carbonDate->format('d.m'), 'day_of_week' => $dayMap[$carbonDate->dayOfWeek]];
+        });
+
+        $adMetricsForPivot = [
+            'views' => 'Показы', 'clicks' => 'Клики', 'ctr' => 'CTR, %',
+            'cpc' => 'CPC, ₽', 'sum' => 'Расходы, ₽', 'atbs' => 'В корзину',
+            'orders' => 'Заказы, шт', 'sum_price' => 'Сумма заказов, ₽'
+        ];
+
         return view('products.show', [
             'product' => $product,
             'yesterdayStats' => $yesterdayStats,
@@ -166,6 +222,12 @@ class ProductController extends Controller
             'pivotedCustomData' => $pivotedCustomData,
             'startDate' => $startDate->toDateString(),
             'endDate' => $endDate->toDateString(),
+            'aggregatedAdStats' => $aggregatedAdStats,
+            'pivotedAdData' => $pivotedAdData,
+            'datesForAdPivot' => $datesForAdPivot,
+            'adMetricsForPivot' => $adMetricsForPivot,
+            'adStartDate' => $adStartDate->toDateString(),
+            'adEndDate' => $adEndDate->toDateString(),
         ]);
     }
 

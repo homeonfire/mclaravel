@@ -6,18 +6,18 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Dakword\WBSeller\API;
 use Dakword\WBSeller\Enum\AdvertStatus;
-use Dakword\WBSeller\Enum\AdvertType;
 use Exception;
 use DateTime;
 
 class IngestCampaignStats extends Command
 {
-    protected $signature = 'wb:ingest-campaign-stats';
-    protected $description = 'Собирает статистику для всех АКТИВНЫХ РК, обрабатывая их пачками';
+    protected $signature = 'wb:ingest-campaign-stats {--date= : Дата для сбора статистики в формате Y-m-d. По умолчанию - вчера.}';
+    protected $description = '2. Собирает ежедневную статистику для АКТИВНЫХ РК, обрабатывая их пачками';
 
     public function handle()
     {
-        $this->info("Начало сбора статистики по активным рекламным кампаниям...");
+        $dateString = $this->option('date') ?? (new DateTime('yesterday'))->format('Y-m-d');
+        $this->info("Начало сбора статистики за {$dateString}...");
 
         try {
             $stores = DB::table('stores')->get();
@@ -33,58 +33,51 @@ class IngestCampaignStats extends Command
                 $api = new API(['masterkey' => $store->api_key]);
                 $advApi = $api->Adv();
 
-                $this->comment("Получение списка активных кампаний...");
-                $activeCampaigns = $this->getActiveCampaigns($advApi);
+                // Получаем активные кампании из НАШЕЙ БАЗЫ ДАННЫХ
+                $activeCampaigns = DB::table('ad_campaigns')
+                    ->where('store_id', $store->id)
+                    ->where('status', AdvertStatus::PLAY)
+                    ->get();
 
-                if (empty($activeCampaigns)) {
-                    $this->warn("Активных кампаний для магазина '{$store->store_name}' не найдено.");
+                if ($activeCampaigns->isEmpty()) {
+                    $this->warn("Активных кампаний для магазина '{$store->store_name}' не найдено в локальной БД.");
                     continue;
                 }
-                $this->info("Найдено активных кампаний: " . count($activeCampaigns));
+                $this->info("Найдено активных кампаний: " . $activeCampaigns->count());
 
-                // Разбиваем все кампании на пачки по 30 штук
-                $campaignChunks = array_chunk($activeCampaigns, 30);
-                $this->info("Всего будет обработано пачек: " . count($campaignChunks));
+                $campaignChunks = $activeCampaigns->chunk(30);
+                $this->info("Всего будет обработано пачек: " . $campaignChunks->count());
 
-                $progressBar = $this->output->createProgressBar(count($activeCampaigns));
+                $progressBar = $this->output->createProgressBar($activeCampaigns->count());
                 $progressBar->start();
 
                 foreach ($campaignChunks as $chunk) {
-                    $this->line("\nОбработка пачки из " . count($chunk) . " кампаний...");
+                    $this->line("\nОбработка пачки из " . $chunk->count() . " кампаний...");
 
                     try {
-                        // --- 1. МАССОВЫЙ ЗАПРОС ОБЩЕЙ СТАТИСТИКИ ---
+                        // Массовый запрос общей статистики
                         $this->comment("   - Запрос общей статистики для пачки...");
-                        $dateTo = new DateTime('yesterday');
-                        $dateFrom = new DateTime('yesterday');
-                        $payload = [];
-                        foreach($chunk as $campaign) {
-                            $payload[] = ['id' => (int)$campaign->advertId, 'dates' => [$dateFrom->format('Y-m-d'), $dateTo->format('Y-m-d')]];
-                        }
+                        $payload = $chunk->map(fn($c) => ['id' => $c->advertId, 'dates' => [$dateString, $dateString]])->all();
                         $statsResponse = $advApi->statistic($payload);
-
-                        // Сохраняем общую статистику
                         if (!empty($statsResponse)) {
                             $this->saveDailyStats($statsResponse, $store->id);
-                            $this->info("     - Общая статистика сохранена.");
                         }
 
-                        // --- 2. ПОСЛЕДОВАТЕЛЬНЫЕ ЗАПРОСЫ ПО КЛЮЧЕВЫМ СЛОВАМ (API не поддерживает пачки) ---
+                        // Последовательные запросы по ключевым словам
                         foreach($chunk as $campaign) {
                             $this->comment("   - Запрос статистики по ключам для РК #{$campaign->advertId}...");
                             $keywordsResponse = $advApi->Auction()->advertStatisticByWords((int)$campaign->advertId);
                             if (isset($keywordsResponse->words->keywords) && is_array($keywordsResponse->words->keywords)) {
-                                $this->saveKeywordStats($keywordsResponse->words->keywords, $store->id, $campaign->advertId, $dateTo->format('Y-m-d'));
+                                $this->saveKeywordStats($keywordsResponse->words->keywords, $store->id, $campaign->advertId, $dateString);
                             }
                             $progressBar->advance();
-                            sleep(2); // Небольшая пауза между запросами по ключам
+                            sleep(2);
                         }
 
                     } catch (Exception $e) {
-                        $this->error("   - Ошибка при обработке пачки: " . $e->getMessage());
-                        $progressBar->advance(count($chunk)); // Пропускаем всю пачку в прогресс-баре
+                        $this->error("\nОшибка при обработке пачки: " . $e->getMessage());
+                        $progressBar->advance($chunk->count());
                     }
-
                     $this->comment("   - Пауза 60 секунд перед следующей пачкой...");
                     sleep(60);
                 }
@@ -98,19 +91,6 @@ class IngestCampaignStats extends Command
             $this->error("Произошла критическая ошибка: " . $e->getMessage());
             return 1;
         }
-    }
-
-    private function getActiveCampaigns(API\Endpoint\Adv $advApi): array
-    {
-        $activeCampaigns = [];
-        foreach ([AdvertType::AUTO, AdvertType::ON_SEARCH_CATALOG] as $type) {
-            $campaigns = $advApi->advertsInfo(AdvertStatus::PLAY, $type);
-            if (!empty($campaigns)) {
-                $activeCampaigns = array_merge($activeCampaigns, array_filter((array)$campaigns, 'is_object'));
-            }
-            sleep(2);
-        }
-        return $activeCampaigns;
     }
 
     private function saveDailyStats(array $statsResponse, int $storeId): void
@@ -133,10 +113,7 @@ class IngestCampaignStats extends Command
             DB::table('ad_campaign_keyword_stats')->where('advertId', $advertId)->where('report_date', $reportDate)->delete();
             $dataToInsert = [];
             foreach ($keywords as $keywordStat) {
-                $dataToInsert[] = [
-                    'store_id' => $storeId, 'advertId' => $advertId, 'report_date' => $reportDate,
-                    'keyword' => $keywordStat->keyword, 'views' => $keywordStat->count,
-                ];
+                $dataToInsert[] = ['store_id' => $storeId, 'advertId' => $advertId, 'report_date' => $reportDate, 'keyword' => $keywordStat->keyword, 'views' => $keywordStat->count];
             }
             if (!empty($dataToInsert)) {
                 DB::table('ad_campaign_keyword_stats')->insert($dataToInsert);

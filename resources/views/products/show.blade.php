@@ -137,59 +137,7 @@
                 </div>
             </div>
 
-            {{-- Блок со сводной таблицей за ТЕКУЩИЙ МЕСЯЦ --}}
-            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Сводка за текущий месяц (сравнение с прошлым месяцем)</h3>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead class="bg-gray-50 dark:bg-gray-700">
-                        <tr>
-                            <th class="sticky left-0 z-30 bg-gray-200 dark:bg-gray-900 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase w-48">Метрика</th>
-                            <th class="sticky left-[192px] z-30 bg-gray-200 dark:bg-gray-900 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase w-40">Итого за месяц</th>
-                            @foreach ($datesForPivot as $dateInfo)
-                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase" style="min-width: 100px;">
-                                    <span>{{ $dateInfo['full_date'] }}</span>
-                                    <span class="block font-normal">{{ $dateInfo['day_of_week'] }}</span>
-                                </th>
-                            @endforeach
-                        </tr>
-                        </thead>
-                        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                        @forelse ($metricsForPivot as $key => $title)
-                            <tr>
-                                <td class="sticky left-0 z-20 bg-gray-100 dark:bg-gray-800 px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white w-48">{{ $title }}</td>
-                                <td class="sticky left-[192px] z-20 bg-gray-100 dark:bg-gray-800 px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-white w-40">
-                                    @php
-                                        $isPercentage = str_contains($key, 'conversion');
-                                        if($isPercentage){
-                                            render_total_cell($currentTotals_month[$key] ?? 0, $previousTotals_month[$key] ?? 0, true);
-                                        } else if ($key == 'avgPriceRub') {
-                                            render_total_cell($monthlyStats->avg($key) ?? 0, $previousMonthStats->avg($key) ?? 0);
-                                        } else {
-                                            render_total_cell($monthlyStats->sum($key), $previousMonthStats->sum($key));
-                                        }
-                                    @endphp
-                                </td>
-                                @foreach ($datesForPivot as $dateInfo)
-                                    <td class="px-4 py-4 text-center text-sm dark:text-white" style="min-width: 100px;">
-                                        @php
-                                            $date = $dateInfo['full_date'];
-                                            $isPercentage = str_contains($key, 'conversion');
-                                            $currentValue = $pivotedData[$key][$date] ?? 0;
-                                            $previousDateKey = \Carbon\Carbon::createFromFormat('d.m', $date)->subDay()->format('d.m');
-                                            $previousValue = $pivotedData[$key][$previousDateKey] ?? null;
-                                            render_pivoted_cell($currentValue, $previousValue, $isPercentage);
-                                        @endphp
-                                    </td>
-                                @endforeach
-                            </tr>
-                        @empty
-                            <tr><td colspan="{{ count($datesForPivot) + 2 }}" class="p-4 text-center text-gray-500">Нет данных для отображения.</td></tr>
-                        @endforelse
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+
 
             {{-- Блок со сводной таблицей с ВЫБОРОМ ПЕРИОДА --}}
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6">
@@ -268,6 +216,80 @@
                             </tr>
                         @empty
                             <tr><td colspan="{{ count($datesForCustomPivot) + 2 }}" class="p-4 text-center text-gray-500">Нет данных за выбранный период.</td></tr>
+                        @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {{-- *** НОВЫЙ БЛОК: Агрегированная статистика по рекламе с выбором периода *** --}}
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6">
+
+                {{-- Форма для выбора периода --}}
+                <form method="GET" action="{{ route('products.show', $product->nmID) }}#ad-stats-table" class="mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">Сводная статистика по рекламе</h3>
+                    <div class="flex items-end space-x-4">
+                        <div>
+                            <label for="ad_start_date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Дата начала</label>
+                            <input type="date" name="ad_start_date" id="ad_start_date" value="{{ $adStartDate }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="ad_end_date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Дата окончания</label>
+                            <input type="date" name="ad_end_date" id="ad_end_date" value="{{ $adEndDate }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        </div>
+                        <button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest transition ease-in-out duration-150">
+                            Показать
+                        </button>
+                    </div>
+                </form>
+
+                <div id="ad-stats-table" class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-50 dark:bg-gray-700">
+                        <tr>
+                            <th class="sticky left-0 z-30 bg-gray-200 dark:bg-gray-900 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase w-48">Метрика</th>
+                            <th class="sticky left-[192px] z-30 bg-gray-200 dark:bg-gray-900 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase w-40">Итого за период</th>
+                            @foreach ($datesForAdPivot as $dateInfo)
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase" style="min-width: 100px;">
+                                    <span>{{ $dateInfo['full_date'] }}</span>
+                                    <span class="block font-normal">{{ $dateInfo['day_of_week'] }}</span>
+                                </th>
+                            @endforeach
+                        </tr>
+                        </thead>
+                        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        @forelse ($adMetricsForPivot as $key => $title)
+                            <tr>
+                                <td class="sticky left-0 z-20 bg-gray-100 dark:bg-gray-800 px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white w-48">{{ $title }}</td>
+                                <td class="sticky left-[192px] z-20 bg-gray-100 dark:bg-gray-800 px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-white w-40">
+                                    @if($key == 'ctr')
+                                        {{ $aggregatedAdStats->sum('views') > 0 ? number_format($aggregatedAdStats->sum('clicks') / $aggregatedAdStats->sum('views') * 100, 2, ',', ' ') : '0,00' }}%
+                                    @elseif($key == 'cpc')
+                                        {{ $aggregatedAdStats->sum('clicks') > 0 ? number_format($aggregatedAdStats->sum('sum') / $aggregatedAdStats->sum('clicks'), 2, ',', ' ') : '0,00' }}
+                                    @else
+                                        {{ number_format($aggregatedAdStats->sum($key), 0, ',', ' ') }}
+                                    @endif
+                                </td>
+                                @foreach ($datesForAdPivot as $dateInfo)
+                                    <td class="px-4 py-4 text-center text-sm dark:text-white" style="min-width: 100px;">
+                                        @php
+                                            $date = $dateInfo['full_date'];
+                                            $isPercentage = ($key == 'ctr');
+                                            $isMoney = in_array($key, ['cpc', 'sum']);
+
+                                            // *** ИЗМЕНЕНИЕ ЗДЕСЬ ***
+                                            $currentValue = $pivotedAdData[$key][$date] ?? 0;
+                                            $previousDateKey = \Carbon\Carbon::createFromFormat('d.m', $date)->subDay()->format('d.m');
+                                            $previousValue = $pivotedAdData[$key][$previousDateKey] ?? null;
+
+                                            // Используем нашу универсальную функцию для рендера ячейки
+                                            render_pivoted_cell($currentValue, $previousValue, $isPercentage || $isMoney);
+                                        @endphp
+                                    </td>
+                                @endforeach
+                            </tr>
+                        @empty
+                            <tr><td colspan="{{ count($datesForAdPivot) + 2 }}" class="p-4 text-center text-gray-500">Нет данных по рекламной статистике за выбранный период.</td></tr>
                         @endforelse
                         </tbody>
                     </table>
