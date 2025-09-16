@@ -137,7 +137,55 @@
                 </div>
             </div>
 
+            {{-- *** ОБНОВЛЕННЫЙ БЛОК: ПЛАН/ФАКТ ПО НЕДЕЛЯМ С KPI *** --}}
+            <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg p-6">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">План/Факт по ключевым показателям (за месяц)</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 
+                    {{-- Функция для рендера одного KPI --}}
+                    @php
+                        if (!function_exists('render_kpi_progress')) {
+                            function render_kpi_progress($title, $fact, $plan) {
+                                $percent = ($plan > 0) ? ($fact / $plan) * 100 : 0;
+                                $bgColor = 'bg-blue-600';
+                                if ($percent >= 100) $bgColor = 'bg-green-500';
+                                if ($percent < 50) $bgColor = 'bg-yellow-500';
+                                if ($percent < 25) $bgColor = 'bg-red-500';
+
+                                echo "<div class='mb-3'>";
+                                echo "<div class='flex justify-between text-sm mb-1'><span class='text-gray-600 dark:text-gray-400'>{$title}</span><span class='font-semibold text-gray-900 dark:text-white'>" . number_format($fact) . " / " . number_format($plan) . "</span></div>";
+                                echo "<div class='w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2'><div class='{$bgColor} h-2 rounded-full' style='width: " . min($percent, 100) . "%'></div></div>";
+                                echo "</div>";
+                            }
+                        }
+                    @endphp
+
+                    <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                        <h4 class="font-bold text-gray-900 dark:text-white border-b border-gray-300 dark:border-gray-600 pb-2 mb-3">Неделя 1</h4>
+                        {!! render_kpi_progress('Заказы, шт', 80, 100) !!}
+                        {!! render_kpi_progress('Выкупы, шт', 65, 85) !!}
+                        {!! render_kpi_progress('CR в корзину, %', 12, 10) !!}
+                    </div>
+                    <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                        <h4 class="font-bold text-gray-900 dark:text-white border-b border-gray-300 dark:border-gray-600 pb-2 mb-3">Неделя 2</h4>
+                        {!! render_kpi_progress('Заказы, шт', 125, 110) !!}
+                        {!! render_kpi_progress('Выкупы, шт', 90, 95) !!}
+                        {!! render_kpi_progress('CR в корзину, %', 15, 12) !!}
+                    </div>
+                    <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                        <h4 class="font-bold text-gray-900 dark:text-white border-b border-gray-300 dark:border-gray-600 pb-2 mb-3">Неделя 3</h4>
+                        {!! render_kpi_progress('Заказы, шт', 90, 120) !!}
+                        {!! render_kpi_progress('Выкупы, шт', 70, 100) !!}
+                        {!! render_kpi_progress('CR в корзину, %', 8, 11) !!}
+                    </div>
+                    <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                        <h4 class="font-bold text-gray-900 dark:text-white border-b border-gray-300 dark:border-gray-600 pb-2 mb-3">Неделя 4</h4>
+                        {!! render_kpi_progress('Заказы, шт', 45, 130) !!}
+                        {!! render_kpi_progress('Выкупы, шт', 30, 115) !!}
+                        {!! render_kpi_progress('CR в корзину, %', 5, 12) !!}
+                    </div>
+                </div>
+            </div>
 
             {{-- Блок со сводной таблицей с ВЫБОРОМ ПЕРИОДА --}}
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6">
