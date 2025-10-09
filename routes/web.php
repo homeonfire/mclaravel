@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PlanningController; // Добавьте это вверху файла
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\LogisticsController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -28,6 +29,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/planning', [PlanningController::class, 'store'])->name('planning.store');
     Route::patch('/products/{product}/cost-price', [ProductController::class, 'updateCostPrice'])->name('products.updateCostPrice');
 
+    Route::get('/logistics', [LogisticsController::class, 'index'])->name('logistics.index');
 });
 
 require __DIR__.'/auth.php';
