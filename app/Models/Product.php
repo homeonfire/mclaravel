@@ -14,6 +14,20 @@ class Product extends Model
     protected $primaryKey = 'nmID';
     public $incrementing = false;
 
+    protected $fillable = [
+        'store_id',
+        'main_image_url',
+        'title',
+        'brand',
+        'nmID',
+        'vendorCode',
+        'cost_price', // Наше новое поле
+        'subjectName',
+        'imtID',
+        'subjectID',
+        'nmUUID'
+    ];
+
     /**
      * Определяет связь "продукт принадлежит магазину".
      */

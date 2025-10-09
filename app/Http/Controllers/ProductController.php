@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\BehavioralStat;
 use Illuminate\Support\Carbon;
+use App\Models\ProductPlan;
 
 class ProductController extends Controller
 {
@@ -175,6 +176,16 @@ class ProductController extends Controller
             ->whereBetween('report_date', [$previousPeriodStartDate, $previousPeriodEndDate])
             ->get();
 
+        // *** НОВЫЙ БЛОК 1: Расчет чистой прибыли для обоих периодов ***
+        $costPrice = $product->cost_price;
+        $customPeriodStats->each(function ($stat) use ($costPrice) {
+            $stat->netProfit = $stat->buyoutsSumRub - ($stat->buyoutsCount * $costPrice);
+        });
+        $previousCustomPeriodStats->each(function ($stat) use ($costPrice) {
+            $stat->netProfit = $stat->buyoutsSumRub - ($stat->buyoutsCount * $costPrice);
+        });
+        // *** КОНЕЦ НОВОГО БЛОКА 1 ***
+
         $datesForCustomPivot = $customPeriodStats->pluck('report_date')->unique()->map(function ($dateString) use ($dayMap) {
             $carbonDate = Carbon::parse($dateString);
             return ['full_date' => $carbonDate->format('d.m'), 'day_of_week' => $dayMap[$carbonDate->dayOfWeek]];
@@ -189,6 +200,7 @@ class ProductController extends Controller
             'ordersSumRub' => 'Сумма заказов, ₽', 'buyoutsSumRub' => 'Сумма выкупов, ₽', 'cancelSumRub' => 'Сумма отмен, ₽',
             'avgPriceRub' => 'Ср. цена, ₽', 'conversion_to_cart' => 'Конверсия в корзину, %',
             'conversion_cart_to_order' => 'Конверсия в заказ, %', 'conversion_click_to_order' => 'Конверсия из клика в заказ, %',
+            'netProfit' => 'Чистая прибыль, ₽',
         ];
 
         // A. Определяем период для рекламной таблицы: из запроса или по умолчанию (текущий месяц)
@@ -247,6 +259,33 @@ class ProductController extends Controller
             'orders' => 'Заказы, шт', 'sum_price' => 'Сумма заказов, ₽'
         ];
 
+        // --- *** НОВЫЙ БЛОК: Логика для План/Факт за месяц *** ---
+
+        // 1. Определяем месяц для отображения: из запроса или текущий по умолчанию
+        $selectedPlanMonth = $request->input('plan_month', now()->format('Y-m'));
+        $startOfMonth = Carbon::parse($selectedPlanMonth)->startOfMonth();
+        $endOfMonth = Carbon::parse($selectedPlanMonth)->endOfMonth();
+
+        // 2. Получаем ПЛАН на этот месяц из таблицы product_plans
+        $planData = ProductPlan::where('product_nmID', $product->nmID)
+            ->where('store_id', $product->store_id)
+            ->where('period_start_date', $startOfMonth->toDateString())
+            ->first();
+
+        // 3. Получаем ФАКТ за этот месяц из таблицы behavioral_stats
+        // Убираем некорректный оператор '=='
+        $factDataMonthly = BehavioralStat::where('nmID', $product->nmID)
+            ->where('store_id', $product->store_id)
+            ->whereBetween('report_date', [$startOfMonth, $endOfMonth])
+            ->selectRaw('SUM(ordersCount) as total_orders, SUM(buyoutsCount) as total_buyouts, SUM(ordersSumRub) as total_orders_sum, SUM(openCardCount) as total_clicks, SUM(addToCartCount) as total_add_to_cart')
+            ->first();
+
+        // Рассчитываем фактическую конверсию
+        $fact_cr_to_cart = 0;
+        if ($factDataMonthly && $factDataMonthly->total_clicks > 0) {
+            $fact_cr_to_cart = ($factDataMonthly->total_add_to_cart / $factDataMonthly->total_clicks) * 100;
+        }
+
         return view('products.show', [
             'product' => $product,
             'yesterdayStats' => $yesterdayStats,
@@ -271,6 +310,10 @@ class ProductController extends Controller
             'adMetricsForPivot' => $adMetricsForPivot,
             'adStartDate' => $adStartDate->toDateString(),
             'adEndDate' => $adEndDate->toDateString(),
+            'selectedPlanMonth' => $selectedPlanMonth,
+            'planData' => $planData,
+            'factDataMonthly' => $factDataMonthly,
+            'fact_cr_to_cart' => $fact_cr_to_cart
         ]);
     }
 
@@ -310,5 +353,18 @@ class ProductController extends Controller
             $pivotedData['conversion_click_to_order'][$dateKey] = ($stat->openCardCount > 0) ? ($stat->ordersCount / $stat->openCardCount) * 100 : 0;
         }
         return $pivotedData;
+    }
+
+    public function updateCostPrice(Request $request, Product $product)
+    {
+        $validated = $request->validate([
+            'cost_price' => 'required|numeric|min:0'
+        ]);
+
+        $product->update([
+            'cost_price' => $validated['cost_price']
+        ]);
+
+        return back()->with('status', 'Себестоимость успешно обновлена!');
     }
 }

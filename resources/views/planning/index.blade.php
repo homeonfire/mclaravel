@@ -8,21 +8,21 @@
     <div class="py-12">
         <div class="mx-auto sm:px-6 lg:px-8">
 
-            {{-- Filter Form --}}
+            {{-- Форма фильтрации --}}
             <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg p-6 mb-6">
                 <form id="filters-form" method="GET" action="{{ route('planning.index') }}">
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
 
-                        {{-- Month Selector --}}
+                        {{-- Выбор месяца --}}
                         <div>
                             <label for="month" class="block font-medium text-sm text-gray-700 dark:text-gray-300">Месяц</label>
                             <input type="month" name="month" id="month" value="{{ $selectedMonth }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                         </div>
 
-                        {{-- Store Selector --}}
+                        {{-- Выбор магазина --}}
                         <div>
                             <label for="store_id" class="block font-medium text-sm text-gray-700 dark:text-gray-300">Магазин</label>
-                            <select name="store_id" id="store_id" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            <select name="store_id" id="store_id" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:border-indigo-500 focus:border-indigo-500 sm:text-sm">
                                 <option value="">Все магазины</option>
                                 @foreach ($stores as $store)
                                     <option value="{{ $store->id }}" @selected($selectedStoreId == $store->id)>{{ $store->store_name }}</option>
@@ -30,13 +30,13 @@
                             </select>
                         </div>
 
-                        {{-- Vendor Code Search --}}
+                        {{-- Поиск по артикулу --}}
                         <div>
                             <label for="search" class="block font-medium text-sm text-gray-700 dark:text-gray-300">Артикул продавца</label>
                             <input type="text" name="search" id="search" value="{{ $searchQuery }}" placeholder="Введите vendorCode..." class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                         </div>
 
-                        {{-- Apply Button --}}
+                        {{-- Кнопка "Применить" --}}
                         <div>
                             <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2 bg-gray-800 dark:bg-gray-200 border border-transparent rounded-md font-semibold text-xs text-white dark:text-gray-800 uppercase tracking-widest hover:bg-gray-700 dark:hover:bg-white focus:outline-none">
                                 Применить фильтры
@@ -46,7 +46,7 @@
                 </form>
             </div>
 
-            {{-- Form for saving plans --}}
+            {{-- Форма для сохранения планов --}}
             <form method="POST" action="{{ route('planning.store') }}">
                 @csrf
                 <input type="hidden" name="month" value="{{ $selectedMonth }}">
@@ -60,16 +60,9 @@
                         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                             <thead class="bg-gray-50 dark:bg-gray-700">
                             <tr>
-                                <th class="sticky left-0 z-10 bg-gray-50 dark:bg-gray-700 px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-1/3">Товар</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Переходы</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">В корзину</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Заказы, шт</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Сумма заказов, ₽</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Выкупы, шт</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Сумма выкупов, ₽</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Отмены, шт</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Сумма отмен, ₽</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Ср. цена, ₽</th>
+                                <th class="sticky left-0 z-10 bg-gray-50 dark:bg-gray-700 px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-1/2">Товар</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">План заказов, шт</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">План выкупов, шт</th>
                             </tr>
                             </thead>
                             <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -93,18 +86,15 @@
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="px-2 py-4"><input type="number" name="plans[{{ $product->nmID }}][openCardCount]" value="{{ $plan->plan_openCardCount ?? '' }}" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"></td>
-                                    <td class="px-2 py-4"><input type="number" name="plans[{{ $product->nmID }}][addToCartCount]" value="{{ $plan->plan_addToCartCount ?? '' }}" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"></td>
-                                    <td class="px-2 py-4"><input type="number" name="plans[{{ $product->nmID }}][ordersCount]" value="{{ $plan->plan_ordersCount ?? '' }}" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"></td>
-                                    <td class="px-2 py-4"><input type="number" name="plans[{{ $product->nmID }}][ordersSumRub]" value="{{ $plan->plan_ordersSumRub ?? '' }}" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"></td>
-                                    <td class="px-2 py-4"><input type="number" name="plans[{{ $product->nmID }}][buyoutsCount]" value="{{ $plan->plan_buyoutsCount ?? '' }}" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"></td>
-                                    <td class="px-2 py-4"><input type="number" name="plans[{{ $product->nmID }}][buyoutsSumRub]" value="{{ $plan->plan_buyoutsSumRub ?? '' }}" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"></td>
-                                    <td class="px-2 py-4"><input type="number" name="plans[{{ $product->nmID }}][cancelCount]" value="{{ $plan->plan_cancelCount ?? '' }}" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"></td>
-                                    <td class="px-2 py-4"><input type="number" name="plans[{{ $product->nmID }}][cancelSumRub]" value="{{ $plan->plan_cancelSumRub ?? '' }}" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"></td>
-                                    <td class="px-2 py-4"><input type="number" name="plans[{{ $product->nmID }}][avgPriceRub]" value="{{ $plan->plan_avgPriceRub ?? '' }}" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm"></td>
+                                    <td class="px-6 py-4">
+                                        <input type="number" name="plans[{{ $product->nmID }}][ordersCount]" value="{{ $plan->plan_ordersCount ?? '' }}" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm">
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <input type="number" name="plans[{{ $product->nmID }}][buyoutsCount]" value="{{ $plan->plan_buyoutsCount ?? '' }}" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm">
+                                    </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="10" class="p-6 text-center text-gray-500">Товары по вашему запросу не найдены.</td></tr>
+                                <tr><td colspan="3" class="p-6 text-center text-gray-500">Товары по вашему запросу не найдены.</td></tr>
                             @endforelse
                             </tbody>
                         </table>

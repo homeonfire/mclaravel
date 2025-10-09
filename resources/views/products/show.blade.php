@@ -109,6 +109,25 @@
                     <div><dt class="font-medium text-gray-900 dark:text-gray-100">Бренд</dt><dd>{{ $product->brand }}</dd></div>
                     <div><dt class="font-medium text-gray-900 dark:text-gray-100">Артикул WB (nmID)</dt><dd>{{ $product->nmID }}</dd></div>
                     <div><dt class="font-medium text-gray-900 dark:text-gray-100">Артикул продавца</dt><dd>{{ $product->vendorCode }}</dd></div>
+                    {{-- *** НОВЫЙ БЛОК ДЛЯ СЕБЕСТОИМОСТИ *** --}}
+                    <div>
+                        <dt class="font-medium text-gray-900 dark:text-gray-100">Себестоимость</dt>
+
+                        <div id="cost-price-display">
+                            <span class="font-bold text-lg text-gray-900 dark:text-white">{{ number_format($product->cost_price, 2, ',', ' ') }} ₽</span>
+                            <a href="#" id="edit-cost-price-btn" class="ml-2 text-blue-500 hover:underline text-xs">Изменить</a>
+                        </div>
+
+                        <form id="cost-price-form" action="{{ route('products.updateCostPrice', $product) }}" method="POST" class="hidden">
+                            @csrf
+                            @method('PATCH')
+                            <div class="flex items-center">
+                                <input type="number" step="0.01" name="cost_price" value="{{ $product->cost_price }}" class="block w-32 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm">
+                                <button type="submit" class="ml-2 inline-flex items-center px-3 py-1 bg-blue-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest">Сохранить</button>
+                            </div>
+                        </form>
+                    </div>
+                    {{-- *** КОНЕЦ НОВОГО БЛОКА *** --}}
                 </div>
             </div>
 
@@ -137,59 +156,69 @@
                 </div>
             </div>
 
-            {{-- *** ОБНОВЛЕННЫЙ БЛОК: ПЛАН/ФАКТ ПО НЕДЕЛЯМ С KPI *** --}}
+            {{-- *** ОБНОВЛЕННЫЙ БЛОК: ПЛАН/ФАКТ ЗА МЕСЯЦ С KPI *** --}}
             <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg p-6">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">План/Факт по ключевым показателям (за месяц)</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 
-                    {{-- Функция для рендера одного KPI --}}
+                {{-- Форма для выбора месяца --}}
+                <form method="GET" action="{{ route('products.show', $product->nmID) }}#plan-fact-block" class="mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
+                    {{-- Скрытые поля для сохранения состояния других фильтров --}}
+                    <input type="hidden" name="start_date" value="{{ $startDate }}">
+                    <input type="hidden" name="end_date" value="{{ $endDate }}">
+                    <input type="hidden" name="ad_start_date" value="{{ $adStartDate }}">
+                    <input type="hidden" name="ad_end_date" value="{{ $adEndDate }}">
+                    <div class="flex items-end space-x-4">
+                        <div>
+                            <label for="plan_month" class="block text-sm font-medium text-gray-700 dark:text-gray-300">План/Факт за месяц</label>
+                            <input type="month" name="plan_month" id="plan_month" value="{{ $selectedPlanMonth }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        </div>
+                        <button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest transition ease-in-out duration-150">
+                            Показать
+                        </button>
+                    </div>
+                </form>
+
+                <div id="plan-fact-block">
+                    {{-- Функция для рендера одного KPI (уже должна быть определена выше в файле) --}}
                     @php
                         if (!function_exists('render_kpi_progress')) {
                             function render_kpi_progress($title, $fact, $plan) {
                                 $percent = ($plan > 0) ? ($fact / $plan) * 100 : 0;
+                                $percent_display = number_format($percent, 0);
                                 $bgColor = 'bg-blue-600';
                                 if ($percent >= 100) $bgColor = 'bg-green-500';
-                                if ($percent < 50) $bgColor = 'bg-yellow-500';
-                                if ($percent < 25) $bgColor = 'bg-red-500';
+                                if ($percent < 75) $bgColor = 'bg-yellow-500';
+                                if ($percent < 50) $bgColor = 'bg-red-500';
 
-                                echo "<div class='mb-3'>";
-                                echo "<div class='flex justify-between text-sm mb-1'><span class='text-gray-600 dark:text-gray-400'>{$title}</span><span class='font-semibold text-gray-900 dark:text-white'>" . number_format($fact) . " / " . number_format($plan) . "</span></div>";
-                                echo "<div class='w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2'><div class='{$bgColor} h-2 rounded-full' style='width: " . min($percent, 100) . "%'></div></div>";
+                                echo "<div class='mb-4'>";
+                                echo "<div class='flex justify-between items-center text-sm mb-1'><span class='text-gray-600 dark:text-gray-400'>{$title}</span><span class='font-semibold text-gray-900 dark:text-white'>" . number_format($fact, 0, ',', ' ') . " / " . number_format($plan, 0, ',', ' ') . "</span></div>";
+                                echo "<div class='w-full bg-gray-200 dark:bg-gray-600 rounded-full h-4 relative'><div class='{$bgColor} h-4 rounded-full flex items-center justify-center text-white text-xs font-bold' style='width: " . min($percent, 100) . "%'><span>{$percent_display}%</span></div></div>";
                                 echo "</div>";
                             }
                         }
                     @endphp
 
-                    <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
-                        <h4 class="font-bold text-gray-900 dark:text-white border-b border-gray-300 dark:border-gray-600 pb-2 mb-3">Неделя 1</h4>
-                        {!! render_kpi_progress('Заказы, шт', 80, 100) !!}
-                        {!! render_kpi_progress('Выкупы, шт', 65, 85) !!}
-                        {!! render_kpi_progress('CR в корзину, %', 12, 10) !!}
-                    </div>
-                    <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
-                        <h4 class="font-bold text-gray-900 dark:text-white border-b border-gray-300 dark:border-gray-600 pb-2 mb-3">Неделя 2</h4>
-                        {!! render_kpi_progress('Заказы, шт', 125, 110) !!}
-                        {!! render_kpi_progress('Выкупы, шт', 90, 95) !!}
-                        {!! render_kpi_progress('CR в корзину, %', 15, 12) !!}
-                    </div>
-                    <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
-                        <h4 class="font-bold text-gray-900 dark:text-white border-b border-gray-300 dark:border-gray-600 pb-2 mb-3">Неделя 3</h4>
-                        {!! render_kpi_progress('Заказы, шт', 90, 120) !!}
-                        {!! render_kpi_progress('Выкупы, шт', 70, 100) !!}
-                        {!! render_kpi_progress('CR в корзину, %', 8, 11) !!}
-                    </div>
-                    <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
-                        <h4 class="font-bold text-gray-900 dark:text-white border-b border-gray-300 dark:border-gray-600 pb-2 mb-3">Неделя 4</h4>
-                        {!! render_kpi_progress('Заказы, шт', 45, 130) !!}
-                        {!! render_kpi_progress('Выкупы, шт', 30, 115) !!}
-                        {!! render_kpi_progress('CR в корзину, %', 5, 12) !!}
-                    </div>
+                    @if($planData)
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {{-- Выводим KPI, используя данные из контроллера --}}
+                            {!! render_kpi_progress('Заказы, шт', $factDataMonthly->total_orders ?? 0, $planData->plan_ordersCount ?? 0) !!}
+                            {!! render_kpi_progress('Выкупы, шт', $factDataMonthly->total_buyouts ?? 0, $planData->plan_buyoutsCount ?? 0) !!}
+                            {{-- {!! render_kpi_progress('Сумма заказов, ₽', $factDataMonthly->total_orders_sum ?? 0, $planData->plan_ordersSumRub ?? 0) !!} --}}
+                        </div>
+                    @else
+                        <div class="text-center text-gray-500 py-8">
+                            <p>План для этого товара на выбранный месяц не задан.</p>
+                            <a href="{{ route('planning.index', ['month' => $selectedPlanMonth, 'search' => $product->vendorCode]) }}" class="mt-2 inline-block text-blue-500 hover:underline">Перейти к планированию</a>
+                        </div>
+                    @endif
                 </div>
             </div>
 
             {{-- Блок со сводной таблицей с ВЫБОРОМ ПЕРИОДА --}}
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6">
                 <form method="GET" action="{{ route('products.show', $product->nmID) }}" class="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+                    <input type="hidden" name="plan_month" value="{{ $selectedPlanMonth }}">
+                    <input type="hidden" name="ad_start_date" value="{{ $adStartDate }}">
+                    <input type="hidden" name="ad_end_date" value="{{ $adEndDate }}">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">Отчет за произвольный период</h3>
                     <div class="flex items-end space-x-4">
                         <div>
@@ -237,30 +266,41 @@
                         @forelse ($metricsForPivot as $key => $title)
                             <tr data-metric-key="{{ $key }}">
                                 <td class="sticky left-0 z-20 bg-gray-100 dark:bg-gray-800 px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white w-48">{{ $title }}</td>
-                                <td class="sticky left-[192px] z-20 bg-gray-100 dark:bg-gray-800 px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-white w-40">
-                                    @php
-                                        $isPercentage = str_contains($key, 'conversion');
-                                        if($isPercentage){
-                                            render_total_cell($currentTotals_custom[$key] ?? 0, $previousTotals_custom[$key] ?? 0, true);
-                                        } else if ($key == 'avgPriceRub') {
-                                            render_total_cell($customPeriodStats->avg($key) ?? 0, $previousCustomPeriodStats->avg($key) ?? 0);
-                                        } else {
-                                            render_total_cell($customPeriodStats->sum($key), $previousCustomPeriodStats->sum($key));
-                                        }
-                                    @endphp
-                                </td>
-                                @foreach ($datesForCustomPivot as $dateInfo)
-                                    <td class="px-4 py-4 text-center text-sm dark:text-white" style="min-width: 120px;">
+
+                                {{-- *** КЛЮЧЕВОЕ ИЗМЕНЕНИЕ ЗДЕСЬ *** --}}
+                                @if ($key == 'netProfit' && $product->cost_price <= 0)
+                                    {{-- Если это строка прибыли и себестоимость не задана, выводим сообщение --}}
+                                    <td colspan="{{ count($datesForCustomPivot) + 1 }}" class="px-6 py-4 text-center text-sm text-yellow-600 dark:text-yellow-40ag-400">
+                                        Не указана себестоимость. <a href="#cost-price-display" id="edit-cost-price-link" class="underline">Изменить</a>
+                                    </td>
+                                @else
+                                    {{-- Иначе выводим ячейки как обычно --}}
+                                    <td class="sticky left-[192px] z-20 bg-gray-100 dark:bg-gray-800 px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-white w-40">
                                         @php
-                                            $date = $dateInfo['full_date'];
                                             $isPercentage = str_contains($key, 'conversion');
-                                            $currentValue = $pivotedCustomData[$key][$date] ?? 0;
-                                            $previousDateKey = \Carbon\Carbon::createFromFormat('d.m', $date)->subDay()->format('d.m');
-                                            $previousValue = $pivotedCustomData[$key][$previousDateKey] ?? null;
-                                            render_pivoted_cell($currentValue, $previousValue, $isPercentage);
+                                            if($isPercentage){
+                                                render_total_cell($currentTotals_custom[$key] ?? 0, $previousTotals_custom[$key] ?? 0, true);
+                                            } else if ($key == 'avgPriceRub') {
+                                                render_total_cell($customPeriodStats->avg($key) ?? 0, $previousCustomPeriodStats->avg($key) ?? 0);
+                                            } else {
+                                                render_total_cell($customPeriodStats->sum($key), $previousCustomPeriodStats->sum($key));
+                                            }
                                         @endphp
                                     </td>
-                                @endforeach
+                                    @foreach ($datesForCustomPivot as $dateInfo)
+                                        <td class="px-4 py-4 text-center text-sm dark:text-white" style="min-width: 120px;">
+                                            @php
+                                                $date = $dateInfo['full_date'];
+                                                $isPercentage = str_contains($key, 'conversion');
+                                                $currentValue = $pivotedCustomData[$key][$date] ?? 0;
+                                                $previousDateKey = \Carbon\Carbon::createFromFormat('d.m', $date)->subDay()->format('d.m');
+                                                $previousValue = $pivotedCustomData[$key][$previousDateKey] ?? null;
+                                                render_pivoted_cell($currentValue, $previousValue, $isPercentage);
+                                            @endphp
+                                        </td>
+                                    @endforeach
+                                @endif
+                                {{-- *** КОНЕЦ ИЗМЕНЕНИЯ *** --}}
                             </tr>
                         @empty
                             <tr><td colspan="{{ count($datesForCustomPivot) + 2 }}" class="p-4 text-center text-gray-500">Нет данных за выбранный период.</td></tr>
@@ -275,6 +315,9 @@
 
                 {{-- Форма для выбора периода --}}
                 <form method="GET" action="{{ route('products.show', $product->nmID) }}#ad-stats-table" class="mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
+                    <input type="hidden" name="plan_month" value="{{ $selectedPlanMonth }}">
+                    <input type="hidden" name="start_date" value="{{ $startDate }}">
+                    <input type="hidden" name="end_date" value="{{ $endDate }}">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">Сводная статистика по рекламе</h3>
                     <div class="flex items-end space-x-4">
                         <div>
@@ -424,6 +467,28 @@
                             setCookie(cookieName, visibleMetrics, 365);
                             updateTableVisibility();
                         });
+                    });
+                }
+                // *** НОВЫЙ СКРИПТ ДЛЯ РЕДАКТИРОВАНИЯ СЕБЕСТОИМОСТИ ***
+                const displayBlock = document.getElementById('cost-price-display');
+                const formBlock = document.getElementById('cost-price-form');
+                const editBtn = document.getElementById('edit-cost-price-btn');
+
+                if (editBtn) {
+                    editBtn.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        displayBlock.classList.add('hidden');
+                        formBlock.classList.remove('hidden');
+                    });
+                }
+
+                // *** ДОПОЛНЕНИЕ К СКРИПТУ: Ссылка для быстрого редактирования себестоимости ***
+                const editCostPriceLink = document.getElementById('edit-cost-price-link');
+                if(editCostPriceLink) {
+                    editCostPriceLink.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        document.getElementById('edit-cost-price-btn').click();
+                        document.getElementById('cost-price-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
                     });
                 }
             });

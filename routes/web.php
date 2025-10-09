@@ -4,6 +4,7 @@ use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PlanningController; // Добавьте это вверху файла
+use App\Http\Controllers\ProductController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -25,6 +26,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/advertising/{campaign}', [App\Http\Controllers\AdCampaignController::class, 'show'])->name('advertising.show');
     Route::get('/planning', [PlanningController::class, 'index'])->name('planning.index');
     Route::post('/planning', [PlanningController::class, 'store'])->name('planning.store');
+    Route::patch('/products/{product}/cost-price', [ProductController::class, 'updateCostPrice'])->name('products.updateCostPrice');
+
 });
 
 require __DIR__.'/auth.php';
