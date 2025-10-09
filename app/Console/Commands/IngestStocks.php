@@ -6,12 +6,12 @@ use App\Models\SkuStock;
 use Dakword\WBSeller\API;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use DateTime; // <-- Добавляем для использования DateTime
+use DateTime;
 
 class IngestStocks extends Command
 {
     protected $signature = 'wb:ingest-stocks';
-    protected $description = 'Загружает актуальные остатки товаров со складов WB';
+    protected $description = 'Загружает актуальные остатки товаров со складов WB, включая товары в пути';
 
     public function handle()
     {
@@ -24,7 +24,6 @@ class IngestStocks extends Command
             $api = new API(['masterkey' => $store->api_key]);
 
             try {
-                // *** ИЗМЕНЕНИЕ ЗДЕСЬ: Передаем текущую дату, а не 0 ***
                 $stocks = $api->Statistics()->stocks(new DateTime());
 
                 if (empty($stocks)) {
@@ -36,11 +35,16 @@ class IngestStocks extends Command
                 $updatedCount = 0;
 
                 foreach ($stocks as $stockItem) {
-                    // В этом ответе API штрихкод приходит в поле 'barcode'
                     if (isset($stockItem->barcode)) {
-                        // Обновляем только поле stock_wb в нашей таблице
+
+                        // *** ИЗМЕНЕНИЕ ЗДЕСЬ: Обновляем все три поля ***
                         $result = SkuStock::where('sku_barcode', $stockItem->barcode)
-                            ->update(['stock_wb' => $stockItem->quantity]);
+                            ->update([
+                                'stock_wb' => $stockItem->quantity ?? 0,
+                                'in_way_to_client' => $stockItem->inWayToClient ?? 0,
+                                'in_way_from_client' => $stockItem->inWayFromClient ?? 0,
+                            ]);
+
                         if($result) $updatedCount++;
                     }
                 }

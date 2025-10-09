@@ -49,6 +49,8 @@
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Товар / SKU</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Продаж/день</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Остаток WB</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">К клиенту</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">От клиента</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Свой склад</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">В пути на WB</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Оборачиваемость, дней</th>
@@ -75,8 +77,10 @@
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{{ number_format($sku->avg_daily_sales, 2, ',', ' ') }}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ number_format($sku->stock_wb, 0, ',', ' ') }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{-- Здесь будет редактируемое поле для $sku->stock_own --}}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{-- Здесь будет редактируемое поле для $sku->in_transit_to_wb --}}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-500">{{ number_format($sku->in_way_to_client, 0, ',', ' ') }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-yellow-500">{{ number_format($sku->in_way_from_client, 0, ',', ' ') }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{-- Редактируемое поле для $sku->stock_own --}}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{-- Редактируемое поле для $sku->in_transit_to_wb --}}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-bold">
                                     @if(is_null($sku->turnover_days))
                                         <span class="text-gray-400">∞</span>
