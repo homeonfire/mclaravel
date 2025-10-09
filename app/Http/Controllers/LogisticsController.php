@@ -11,23 +11,20 @@ class LogisticsController extends Controller
 {
     public function index(Request $request)
     {
-        // 1. Получаем параметры фильтров и СОРТИРОВКИ
+        // 1. Получаем параметры фильтров из запроса
         $selectedStoreId = $request->input('store_id');
         $searchQuery = $request->input('search');
+
         $startDate = $request->input('start_date', now()->subDays(14)->toDateString());
         $endDate = $request->input('end_date', now()->toDateString());
 
-        // По умолчанию сортируем по оборачиваемости (сначала проблемные)
-        $sortColumn = $request->input('sort', 'turnover_days');
-        $sortDirection = $request->input('direction', 'asc');
-
         $durationInDays = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) + 1;
 
-        // 2. Подзапрос для расчета среднего темпа продаж
+        // *** ИЗМЕНЕНИЕ ЗДЕСЬ: Используем DATE() для корректного сравнения ***
         $salesPaceSubquery = DB::table('sales_raw')
             ->select('barcode', DB::raw("COUNT(*) / {$durationInDays} as avg_daily_sales"))
-            ->where('saleID', 'like', 'S-%')
-            ->whereBetween('date', [$startDate, $endDate])
+            ->where('saleID', 'like', 'S-%') // Считаем только продажи (выкупы)
+            ->whereBetween(DB::raw('DATE(date)'), [$startDate, $endDate]) // Преобразуем DATETIME в DATE
             ->groupBy('barcode');
 
         // 3. Основной запрос для получения SKU
@@ -49,7 +46,10 @@ class LogisticsController extends Controller
                     ->orWhere('skus.barcode', 'like', "%{$search}%");
             });
 
-        // 4. Рассчитываем оборачиваемость (теперь это вычисляемое поле в запросе)
+        // Расчет оборачиваемости и сортировка
+        $sortColumn = $request->input('sort', 'turnover_days');
+        $sortDirection = $request->input('direction', 'asc');
+
         $skusQuery->addSelect(DB::raw('
             CASE
                 WHEN COALESCE(sales_pace.avg_daily_sales, 0) > 0 THEN FLOOR((sku_stocks.stock_wb + sku_stocks.stock_own) / sales_pace.avg_daily_sales)
@@ -57,15 +57,13 @@ class LogisticsController extends Controller
             END as turnover_days
         '));
 
-        // 5. Применяем сортировку
-        // Проверяем, что колонка разрешена для сортировки, для безопасности
         if (in_array($sortColumn, ['avg_daily_sales', 'stock_wb', 'turnover_days'])) {
             $skusQuery->orderBy($sortColumn, $sortDirection);
         }
 
         $skus = $skusQuery->paginate(50);
 
-        // 6. Получаем данные для фильтров
+        // 5. Получаем данные для фильтров
         $stores = DB::table('stores')->get();
 
         return view('logistics.index', [
