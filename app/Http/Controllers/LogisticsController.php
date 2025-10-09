@@ -12,7 +12,6 @@ class LogisticsController extends Controller
 {
     public function index(Request $request)
     {
-        // 1. Получаем параметры фильтров и сортировки
         $selectedStoreId = $request->input('store_id');
         $searchQuery = $request->input('search');
         $startDate = $request->input('start_date', now()->subDays(14)->toDateString());
@@ -21,14 +20,12 @@ class LogisticsController extends Controller
         $sortDirection = $request->input('direction', 'asc');
         $durationInDays = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) + 1;
 
-        // 2. Подзапрос для расчета темпа продаж по каждому SKU
         $salesPaceSubquery = DB::table('sales_raw')
             ->select('barcode', DB::raw("COUNT(*) / {$durationInDays} as avg_daily_sales"))
             ->where('saleID', 'like', 'S%')
             ->whereBetween(DB::raw('DATE(date)'), [$startDate, $endDate])
             ->groupBy('barcode');
 
-        // 3. Подзапрос для расчета СУММАРНЫХ показателей для каждого ТОВАРА (для сортировки)
         $totalsSubquery = Sku::query()
             ->join('sku_stocks', 'skus.barcode', '=', 'sku_stocks.sku_barcode')
             ->leftJoinSub($salesPaceSubquery, 'sales_pace', 'skus.barcode', '=', 'sales_pace.barcode')
@@ -39,7 +36,6 @@ class LogisticsController extends Controller
             )
             ->groupBy('skus.product_nmID');
 
-        // 4. Основной запрос к ТОВАРАМ с пагинацией, фильтрами и сортировкой
         $productsQuery = Product::query()
             ->leftJoinSub($totalsSubquery, 'totals', 'products.nmID', '=', 'totals.product_nmID')
             ->select('products.*', 'totals.total_avg_daily_sales', 'totals.total_stock_wb')
@@ -58,7 +54,6 @@ class LogisticsController extends Controller
         $products = $productsQuery->paginate(15);
         $productNmIDsOnPage = $products->pluck('nmID');
 
-        // 5. Получаем ВСЕ SKU для товаров на текущей странице (для раскрывающихся строк)
         $skus = Sku::query()
             ->join('products', 'skus.product_nmID', '=', 'products.nmID')
             ->join('sku_stocks', 'skus.barcode', '=', 'sku_stocks.sku_barcode')
@@ -71,22 +66,40 @@ class LogisticsController extends Controller
             )
             ->get();
 
-        // 6. Рассчитываем оборачиваемость и группируем SKU
         $skusGroupedByProduct = $skus->map(function ($sku) {
             $totalStock = $sku->stock_wb + $sku->stock_own;
             $sku->turnover_days = ($sku->avg_daily_sales > 0) ? floor($totalStock / $sku->avg_daily_sales) : null;
             return $sku;
         })->groupBy('product_nmID');
 
-        // 7. Расчет итоговых сумм для отображения в родительских строках
+        // *** ИСПРАВЛЕНИЕ ЗДЕСЬ: Заполняем логику расчета итогов ***
         $productTotals = [];
-        foreach ($skusGroupedByProduct as $nmID => $skusInGroup) { /* ... */ }
+        foreach ($skusGroupedByProduct as $nmID => $skusInGroup) {
+            $totalSales = $skusInGroup->sum('avg_daily_sales');
+            $totalStockWb = $skusInGroup->sum('stock_wb');
+            $totalStockOwn = $skusInGroup->sum('stock_own');
+            $totalInWayToClient = $skusInGroup->sum('in_way_to_client');
+            $totalInWayFromClient = $skusInGroup->sum('in_way_from_client');
+            $totalInTransitToWb = $skusInGroup->sum('in_transit_to_wb');
 
-        // 8. Передача всех данных в представление
+            $totalStock = $totalStockWb + $totalStockOwn;
+            $totalTurnover = ($totalSales > 0) ? floor($totalStock / $totalSales) : null;
+
+            $productTotals[$nmID] = [
+                'total_avg_daily_sales' => $totalSales,
+                'total_stock_wb' => $totalStockWb,
+                'total_in_way_to_client' => $totalInWayToClient,
+                'total_in_way_from_client' => $totalInWayFromClient,
+                'total_stock_own' => $totalStockOwn,
+                'total_in_transit_to_wb' => $totalInTransitToWb,
+                'total_turnover_days' => $totalTurnover,
+            ];
+        }
+
         return view('logistics.index', [
             'products' => $products,
             'skusGroupedByProduct' => $skusGroupedByProduct,
-            'productTotals' => $productTotals,
+            'productTotals' => $productTotals, // <-- И передаем итоги в представление
             'stores' => DB::table('stores')->get(),
             'selectedStoreId' => $selectedStoreId,
             'searchQuery' => $searchQuery,
