@@ -18,13 +18,12 @@ class LogisticsController extends Controller
         $startDate = $request->input('start_date', now()->subDays(14)->toDateString());
         $endDate = $request->input('end_date', now()->toDateString());
 
-        // +1, чтобы включить последнюю дату в расчет
         $durationInDays = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) + 1;
 
-        // 2. Подзапрос для расчета среднего темпа продаж
-        $salesPaceSubquery = DB::table('orders_raw')
-            // *** ИЗМЕНЕНИЕ ЗДЕСЬ: Меняем COUNT(id) на COUNT(*) ***
+        // *** ИЗМЕНЕНИЕ ЗДЕСЬ: Используем правильное имя таблицы `sales_raw` ***
+        $salesPaceSubquery = DB::table('sales_raw')
             ->select('barcode', DB::raw("COUNT(*) / {$durationInDays} as avg_daily_sales"))
+            ->where('saleID', 'like', 'S-%') // Считаем только продажи (выкупы)
             ->whereBetween('date', [$startDate, $endDate])
             ->groupBy('barcode');
 
@@ -49,7 +48,7 @@ class LogisticsController extends Controller
 
         $skus = $skusQuery->paginate(50);
 
-        // 4. Рассчитываем оборачиваемость для каждой полученной записи
+        // 4. Рассчитываем оборачиваемость
         $skus->getCollection()->transform(function ($sku) {
             $totalStock = $sku->stock_wb + $sku->stock_own;
             $sku->turnover_days = ($sku->avg_daily_sales > 0) ? floor($totalStock / $sku->avg_daily_sales) : null;
