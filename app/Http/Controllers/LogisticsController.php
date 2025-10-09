@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http-Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,11 +20,11 @@ class LogisticsController extends Controller
 
         $durationInDays = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) + 1;
 
-        // *** ИЗМЕНЕНИЕ ЗДЕСЬ: Используем DATE() для корректного сравнения ***
+        // *** ИЗМЕНЕНИЕ ЗДЕСЬ: Используем правильный префикс 'S%' ***
         $salesPaceSubquery = DB::table('sales_raw')
             ->select('barcode', DB::raw("COUNT(*) / {$durationInDays} as avg_daily_sales"))
-            ->where('saleID', 'like', 'S-%') // Считаем только продажи (выкупы)
-            ->whereBetween(DB::raw('DATE(date)'), [$startDate, $endDate]) // Преобразуем DATETIME в DATE
+            ->where('saleID', 'like', 'S%') // Считаем только продажи (выкупы)
+            ->whereBetween(DB::raw('DATE(date)'), [$startDate, $endDate])
             ->groupBy('barcode');
 
         // 3. Основной запрос для получения SKU
