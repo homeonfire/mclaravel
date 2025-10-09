@@ -8,7 +8,7 @@
     <div class="py-12">
         <div class="max-w-full mx-auto sm:px-6 lg:px-8">
 
-            {{-- Filter Panel --}}
+            {{-- Панель фильтров --}}
             <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg mb-6">
                 <form method="GET" action="{{ route('logistics.index') }}" class="p-6">
                     <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
@@ -40,20 +40,40 @@
                 </form>
             </div>
 
-            {{-- Main Table --}}
+            {{-- Основная таблица --}}
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead class="bg-gray-50 dark:bg-gray-700">
                         <tr>
+                            @php
+                                // Функция для генерации ссылок сортировки
+                                if (!function_exists('renderSortLink')) {
+                                    function renderSortLink($label, $column, $currentSort, $currentDir) {
+                                        $newDir = ($currentSort == $column && $currentDir == 'desc') ? 'asc' : 'desc';
+                                        $icon = '';
+                                        if ($currentSort == $column) {
+                                            $icon = $currentDir == 'desc' ? ' ▼' : ' ▲';
+                                        }
+                                        $url = route('logistics.index', array_merge(request()->query(), ['sort' => $column, 'direction' => $newDir]));
+                                        return "<a href='{$url}'>{$label}{$icon}</a>";
+                                    }
+                                }
+                            @endphp
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Товар / SKU</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Продаж/день</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Остаток WB</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                {!! renderSortLink('Продаж/день', 'avg_daily_sales', $sortColumn, $sortDirection) !!}
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                {!! renderSortLink('Остаток WB', 'stock_wb', $sortColumn, $sortDirection) !!}
+                            </th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">К клиенту</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">От клиента</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Свой склад</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">В пути на WB</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Оборачиваемость, дней</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                {!! renderSortLink('Оборачиваемость', 'turnover_days', $sortColumn, $sortDirection) !!}
+                            </th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Комментарий</th>
                         </tr>
                         </thead>
@@ -96,7 +116,7 @@
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{-- Здесь будет иконка комментариев --}}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="7" class="p-6 text-center text-gray-500 dark:text-gray-400">Артикулы (SKU) не найдены. Убедитесь, что вы запустили команду `php artisan wb:sync-skus`.</td></tr>
+                            <tr><td colspan="9" class="p-6 text-center text-gray-500">Артикулы (SKU) не найдены. Убедитесь, что вы запустили команду `php artisan wb:sync-skus`.</td></tr>
                         @endforelse
                         </tbody>
                     </table>
