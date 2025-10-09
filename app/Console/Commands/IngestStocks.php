@@ -4,9 +4,9 @@ namespace App\Console\Commands;
 
 use App\Models\SkuStock;
 use Dakword\WBSeller\API;
-use Exception;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use DateTime; // <-- Добавляем для использования DateTime
 
 class IngestStocks extends Command
 {
@@ -24,8 +24,8 @@ class IngestStocks extends Command
             $api = new API(['masterkey' => $store->api_key]);
 
             try {
-                // Запрашиваем остатки по всем складам сразу
-                $stocks = $api->Statistics()->stocks(0); // 0 означает все склады
+                // *** ИЗМЕНЕНИЕ ЗДЕСЬ: Передаем текущую дату, а не 0 ***
+                $stocks = $api->Statistics()->stocks(new DateTime());
 
                 if (empty($stocks)) {
                     $this->warn("API не вернул данные по остаткам. Пропускаем.");
@@ -36,16 +36,17 @@ class IngestStocks extends Command
                 $updatedCount = 0;
 
                 foreach ($stocks as $stockItem) {
-                    if (isset($stockItem->sku)) { // sku - это barcode
+                    // В этом ответе API штрихкод приходит в поле 'barcode'
+                    if (isset($stockItem->barcode)) {
                         // Обновляем только поле stock_wb в нашей таблице
-                        $result = SkuStock::where('sku_barcode', $stockItem->sku)
+                        $result = SkuStock::where('sku_barcode', $stockItem->barcode)
                             ->update(['stock_wb' => $stockItem->quantity]);
                         if($result) $updatedCount++;
                     }
                 }
                 $this->info("Обновлено $updatedCount записей.");
 
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
                 $this->error("Ошибка при запросе остатков для магазина '{$store->store_name}': " . $e->getMessage());
             }
         }
