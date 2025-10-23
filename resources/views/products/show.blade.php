@@ -13,6 +13,65 @@
         </div>
     </x-slot>
 
+    {{-- Alpine.js компонент для редактирования ячейки --}}
+    <script>
+        function editableCell(initialValue, updateUrl, fieldName, skuStockId) {
+            return {
+                editing: false,
+                value: initialValue,
+                originalValue: initialValue,
+                updateUrl: updateUrl,
+                fieldName: fieldName,
+                skuStockId: skuStockId,
+                errorMessage: '',
+                startEditing() {
+                    this.originalValue = this.value; // Сохраняем оригинал перед редактированием
+                    this.editing = true;
+                    this.$nextTick(() => this.$refs.input.focus()); // Фокус на поле ввода
+                },
+                cancelEditing() {
+                    this.value = this.originalValue; // Возвращаем старое значение
+                    this.editing = false;
+                    this.errorMessage = '';
+                },
+                saveValue() {
+                    this.errorMessage = '';
+                    const newValue = parseInt(this.value);
+                    if (isNaN(newValue) || newValue < 0) {
+                        this.errorMessage = 'Нужно число >= 0';
+                        return;
+                    }
+                    this.value = newValue;
+
+                    fetch(this.updateUrl, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                            'Accept': 'application/json',
+                        },
+                        body: JSON.stringify({ [this.fieldName]: this.value })
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                this.editing = false;
+                                this.originalValue = this.value;
+                                // Можно добавить уведомление
+                            } else {
+                                this.errorMessage = data.message || 'Ошибка сохранения';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            this.errorMessage = 'Ошибка сети';
+                        });
+                }
+            }
+        }
+    </script>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+
     {{-- *** ЕДИНЫЙ БЛОК PHP ДЛЯ ВСЕХ ФУНКЦИЙ И РАСЧЕТОВ *** --}}
     @php
         // Объявляем вспомогательные функции ОДИН РАЗ, чтобы избежать ошибок
@@ -96,6 +155,7 @@
             'conversion_cart_to_order' => ($prevTotalAddToCart_custom > 0) ? ($prevTotalOrders_custom / $prevTotalAddToCart_custom) * 100 : 0,
             'conversion_click_to_order' => ($prevTotalOpenCard_custom > 0) ? ($prevTotalOrders_custom / $prevTotalOpenCard_custom) * 100 : 0,
         ];
+        $months = [1=>'Янв', 2=>'Фев', 3=>'Мар', 4=>'Апр', 5=>'Май', 6=>'Июн', 7=>'Июл', 8=>'Авг', 9=>'Сен', 10=>'Окт', 11=>'Ноя', 12=>'Дек'];
     @endphp
 
     <div class="py-12">
@@ -130,6 +190,59 @@
                     {{-- *** КОНЕЦ НОВОГО БЛОКА *** --}}
                 </div>
             </div>
+
+            {{-- *** НОВЫЙ БЛОК ДЛЯ СЕЗОННОСТИ *** --}}
+            <div class="md:col-span-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <dt class="font-medium text-gray-900 dark:text-gray-100 mb-2">Месяцы актуальности</dt>
+                <dd class="text-sm text-gray-600 dark:text-gray-400">
+                    {{-- Список существующих периодов --}}
+                    @if($product->seasonalityPeriods->isNotEmpty())
+                        <ul class="space-y-1 mb-3">
+                            @php
+                                $months = [1=>'Янв', 2=>'Фев', 3=>'Мар', 4=>'Апр', 5=>'Май', 6=>'Июн', 7=>'Июл', 8=>'Авг', 9=>'Сен', 10=>'Окт', 11=>'Ноя', 12=>'Дек'];
+                            @endphp
+                            @foreach($product->seasonalityPeriods as $period)
+                                <li class="flex items-center justify-between bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                                    <span>{{ $months[$period->start_month] }} - {{ $months[$period->end_month] }}</span>
+                                    <form action="{{ route('products.deleteSeasonality', $period) }}" method="POST" onsubmit="return confirm('Удалить этот период?');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="text-red-500 hover:text-red-700 text-xs">Удалить</button>
+                                    </form>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @else
+                        <p class="mb-3 italic">Периоды не заданы.</p>
+                    @endif
+
+                    {{-- Форма добавления нового периода --}}
+                    <form action="{{ route('products.addSeasonality', $product) }}" method="POST" class="flex items-end space-x-2">
+                        @csrf
+                        <div>
+                            <label for="start_month" class="block text-xs font-medium text-gray-700 dark:text-gray-300">Начало</label>
+                            <select name="start_month" id="start_month" required class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" style="padding-right: 1.5rem;">
+                                @foreach($months as $num => $name)
+                                    <option value="{{ $num }}">{{ $name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label for="end_month" class="block text-xs font-medium text-gray-700 dark:text-gray-300">Конец</label>
+                            <select name="end_month" id="end_month" required class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" style="padding-right: 1.5rem;">
+                                @foreach($months as $num => $name)
+                                    <option value="{{ $num }}">{{ $name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <button type="submit" class="inline-flex items-center px-3 py-1.5 bg-blue-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest">Добавить</button>
+                    </form>
+                    @error('seasonality')
+                    <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+                    @enderror
+                </dd>
+            </div>
+            {{-- *** КОНЕЦ НОВОГО БЛОКА *** --}}
 
             {{-- Блок со сводкой за вчерашний день --}}
             @if($yesterdayStats)
@@ -386,6 +499,88 @@
                     </table>
                 </div>
             </div>
+
+            {{-- *** НОВЫЙ БЛОК: ЛОГИСТИКА ПО SKU *** --}}
+
+                    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 p-6 border-b border-gray-200 dark:border-gray-700">
+                            Остатки и логистика по размерам (SKU)
+                        </h3>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                <thead class="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Размер / Баркод</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Продаж/день</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Остаток WB</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">К клиенту</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">От клиента</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Свой склад</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">В пути на WB</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">В пути (склад)</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">На фабрике</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Оборачиваемость</th>
+                                </tr>
+                                </thead>
+                                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                @forelse ($skusForProduct as $sku)
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <div class="text-sm font-medium text-gray-900 dark:text-white">Размер: <b>{{ $sku->tech_size }}</b></div>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400">{{ $sku->barcode }}</div>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{{ number_format($sku->avg_daily_sales, 2, ',', ' ') }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ number_format($sku->stock_wb, 0, ',', ' ') }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-500">{{ number_format($sku->in_way_to_client, 0, ',', ' ') }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-yellow-500">{{ number_format($sku->in_way_from_client, 0, ',', ' ') }}</td>
+
+                                        {{-- РЕДАКТИРУЕМЫЕ ЯЧЕЙКИ --}}
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400"
+                                            x-data="editableCell({{ $sku->stock_own }}, '{{ route('logistics.updateStock', $sku->id) }}', 'stock_own', {{ $sku->id }})">
+                                            <span x-show="!editing" @click="startEditing" class="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded" x-text="value"></span>
+                                            <input type="number" x-show="editing" x-ref="input" x-model="value" @keydown.enter="saveValue" @keydown.escape="cancelEditing" @click.outside="saveValue" class="w-20 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm p-1">
+                                            <p x-show="errorMessage" x-text="errorMessage" class="text-xs text-red-500"></p>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400"
+                                            x-data="editableCell({{ $sku->in_transit_to_wb }}, '{{ route('logistics.updateStock', $sku->id) }}', 'in_transit_to_wb', {{ $sku->id }})">
+                                            <span x-show="!editing" @click="startEditing" class="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded" x-text="value"></span>
+                                            <input type="number" x-show="editing" x-ref="input" x-model="value" @keydown.enter="saveValue" @keydown.escape="cancelEditing" @click.outside="saveValue" class="w-20 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm p-1">
+                                            <p x-show="errorMessage" x-text="errorMessage" class="text-xs text-red-500"></p>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400"
+                                            x-data="editableCell({{ $sku->in_transit_general }}, '{{ route('logistics.updateStock', $sku->id) }}', 'in_transit_general', {{ $sku->id }})">
+                                            <span x-show="!editing" @click="startEditing" class="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded" x-text="value"></span>
+                                            <input type="number" x-show="editing" x-ref="input" x-model="value" @keydown.enter="saveValue" @keydown.escape="cancelEditing" @click.outside="saveValue" class="w-20 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm p-1">
+                                            <p x-show="errorMessage" x-text="errorMessage" class="text-xs text-red-500"></p>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400"
+                                            x-data="editableCell({{ $sku->at_factory }}, '{{ route('logistics.updateStock', $sku->id) }}', 'at_factory', {{ $sku->id }})">
+                                            <span x-show="!editing" @click="startEditing" class="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded" x-text="value"></span>
+                                            <input type="number" x-show="editing" x-ref="input" x-model="value" @keydown.enter="saveValue" @keydown.escape="cancelEditing" @click.outside="saveValue" class="w-20 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm p-1">
+                                            <p x-show="errorMessage" x-text="errorMessage" class="text-xs text-red-500"></p>
+                                        </td>
+
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold">
+                                            @if(is_null($sku->turnover_days))
+                                                <span class="text-gray-400">∞</span>
+                                            @else
+                                                @php $color = $sku->turnover_days < 7 ? 'text-red-500' : ($sku->turnover_days < 30 ? 'text-yellow-500' : 'text-green-500'); @endphp
+                                                <span class="{{ $color }}">{{ $sku->turnover_days }}</span>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="10" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                                            Размеры (SKU) для этого товара еще не синхронизированы. Запустите команду `php artisan wb:sync-skus`.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+            {{-- *** КОНЕЦ НОВОГО БЛОКА *** --}}
 
         </div>
     </div>

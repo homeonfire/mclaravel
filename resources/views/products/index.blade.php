@@ -38,6 +38,14 @@
                             <label for="with_active_campaign" class="ml-2 block text-sm text-gray-900 dark:text-gray-300">Только с активной РК</label>
                         </div>
 
+                        {{-- *** НОВЫЙ ФИЛЬТР "ПОКАЗАТЬ АКТУАЛЬНЫЕ" *** --}}
+                        <div class="flex items-center justify-start pt-6"> {{-- Смещаем чекбокс немного вниз для выравнивания --}}
+                            <label for="show_active_only" class="inline-flex items-center">
+                                <input type="checkbox" name="show_active_only" id="show_active_only" value="1" @checked($showActiveOnly) class="rounded dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-indigo-600 shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:focus:ring-offset-gray-800">
+                                <span class="ml-2 text-sm text-gray-600 dark:text-gray-400">Показать актуальные</span>
+                            </label>
+                        </div>
+
                         {{-- Submit Button --}}
                         <div>
                             <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2 bg-gray-800 dark:bg-gray-200 border border-transparent rounded-md font-semibold text-xs text-white dark:text-gray-800 uppercase tracking-widest hover:bg-gray-700 dark:hover:bg-white focus:outline-none">

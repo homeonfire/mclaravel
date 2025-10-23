@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\BehavioralStat;
 use Illuminate\Support\Carbon;
 use App\Models\ProductPlan;
+use App\Models\Sku;
 
 class ProductController extends Controller
 {
@@ -20,6 +21,7 @@ class ProductController extends Controller
         $searchQuery = $request->input('search');
         $storeId = $request->input('store_id');
         $withActiveCampaign = $request->boolean('with_active_campaign'); // Удобный метод для получения true/false
+        $showActiveOnly = $request->boolean('show_active_only'); // <-- НОВЫЙ ПАРАМЕТР
 
         // 2. Получаем список всех магазинов для выпадающего списка
         $stores = DB::table('stores')->orderBy('store_name')->get();
@@ -62,6 +64,23 @@ class ProductController extends Controller
                         ->whereColumn('acp.store_id', 'products.store_id')
                         ->where('ac.status', 9); // 9 = AdvertStatus::PLAY (активна)
                 });
+            })
+            ->when($showActiveOnly, function ($query) {
+                $currentMonth = Carbon::now()->month;
+                // Используем WHERE EXISTS для проверки наличия хотя бы одного
+                // подходящего периода в связанной таблице seasonality
+                return $query->whereExists(function ($subQuery) use ($currentMonth) {
+                    $subQuery->select(DB::raw(1))
+                        ->from('product_seasonality')
+                        ->whereColumn('product_seasonality.product_nmID', 'products.nmID')
+                        // Учитываем периоды, которые "переходят" через год (например, Ноябрь - Февраль)
+                        ->where(function ($periodQuery) use ($currentMonth) {
+                            // Случай 1: Период в рамках одного года (Март - Август)
+                            $periodQuery->whereRaw('start_month <= end_month AND ? BETWEEN start_month AND end_month', [$currentMonth])
+                                // Случай 2: Период переходит через год (Ноябрь - Февраль)
+                                ->orWhereRaw('start_month > end_month AND (? >= start_month OR ? <= end_month)', [$currentMonth, $currentMonth]);
+                        });
+                });
             });
 
         // 5. Сортируем и разбиваем на страницы
@@ -74,6 +93,7 @@ class ProductController extends Controller
             'stores' => $stores,
             'selectedStoreId' => $storeId,
             'withActiveCampaign' => $withActiveCampaign, // Передаем состояние фильтра в представление
+            'showActiveOnly' => $showActiveOnly,
         ]);
     }
 
@@ -82,7 +102,7 @@ class ProductController extends Controller
      */
     public function show(Request $request, Product $product)
     {
-        $product->load('adCampaigns');
+        $product->load(['store', 'adCampaigns', 'seasonalityPeriods']);;
         $isTracked = auth()->user()->trackedProducts()->where('nmID', $product->nmID)->exists();
 
         // --- 1. ДАННЫЕ ДЛЯ СВОДКИ ЗА ВЧЕРАШНИЙ ДЕНЬ ---
@@ -286,6 +306,38 @@ class ProductController extends Controller
             $fact_cr_to_cart = ($factDataMonthly->total_add_to_cart / $factDataMonthly->total_clicks) * 100;
         }
 
+        // --- 7. ДАННЫЕ ДЛЯ БЛОКА ЛОГИСТИКИ ПО SKU ---
+// Используем даты из основного фильтра "Отчет за произвольный период"
+// $startDate и $endDate уже определены выше в методе
+        $durationInDaysSku = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) + 1;
+
+        $salesPaceSubquerySku = DB::table('sales_raw')
+            ->select('barcode', DB::raw("COUNT(*) / {$durationInDaysSku} as avg_daily_sales"))
+            ->where('saleID', 'like', 'S%')
+            ->where('nmId', $product->nmID) // Фильтруем сразу по текущему товару
+            ->whereBetween(DB::raw('DATE(date)'), [$startDate, $endDate])
+            ->groupBy('barcode');
+
+        $skusForProduct = Sku::query()
+            ->join('sku_stocks', 'skus.barcode', '=', 'sku_stocks.sku_barcode')
+            ->leftJoinSub($salesPaceSubquerySku, 'sales_pace', 'skus.barcode', '=', 'sales_pace.barcode')
+            ->where('skus.product_nmID', $product->nmID)
+            ->select(
+                'skus.barcode', 'skus.tech_size',
+                'sku_stocks.*', // Выбираем все поля из sku_stocks, включая id
+                DB::raw('COALESCE(sales_pace.avg_daily_sales, 0) as avg_daily_sales')
+            )
+            ->orderBy('skus.tech_size', 'asc') // Сортируем по размеру
+            ->get();
+
+// Рассчитываем оборачиваемость для каждого SKU
+        $skusForProduct->transform(function ($sku) {
+            $totalStock = $sku->stock_wb + $sku->stock_own;
+            $sku->turnover_days = ($sku->avg_daily_sales > 0) ? floor($totalStock / $sku->avg_daily_sales) : null;
+            return $sku;
+        });
+// --- КОНЕЦ БЛОКА ЛОГИСТИКИ ПО SKU ---
+
         return view('products.show', [
             'product' => $product,
             'yesterdayStats' => $yesterdayStats,
@@ -313,7 +365,8 @@ class ProductController extends Controller
             'selectedPlanMonth' => $selectedPlanMonth,
             'planData' => $planData,
             'factDataMonthly' => $factDataMonthly,
-            'fact_cr_to_cart' => $fact_cr_to_cart
+            'fact_cr_to_cart' => $fact_cr_to_cart,
+            'skusForProduct' => $skusForProduct, // <-- Передаем новые данные в view
         ]);
     }
 
@@ -366,5 +419,31 @@ class ProductController extends Controller
         ]);
 
         return back()->with('status', 'Себестоимость успешно обновлена!');
+    }
+
+    public function addSeasonality(Request $request, Product $product)
+    {
+        $validated = $request->validate([
+            'start_month' => 'required|integer|between:1,12',
+            'end_month' => 'required|integer|between:1,12',
+        ]);
+
+        // Простая проверка, чтобы конец не был раньше начала (можно усложнить для переходов через год)
+        if ($validated['start_month'] > $validated['end_month']) {
+            return back()->withErrors(['seasonality' => 'Месяц окончания не может быть раньше месяца начала.']);
+        }
+
+        $product->seasonalityPeriods()->create($validated);
+
+        return back()->with('status', 'Период актуальности добавлен.');
+    }
+
+    public function deleteSeasonality(ProductSeasonality $period)
+    {
+        // Дополнительная проверка, что период принадлежит текущему товару (для безопасности)
+        // if ($period->product_nmID !== $product->nmID) { abort(403); }
+
+        $period->delete();
+        return back()->with('status', 'Период актуальности удален.');
     }
 }

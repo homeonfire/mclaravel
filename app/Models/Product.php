@@ -50,4 +50,9 @@ class Product extends Model
             'advertId'              // Внешний ключ для AdCampaign в сводной таблице
         );
     }
+
+    public function seasonalityPeriods()
+    {
+        return $this->hasMany(ProductSeasonality::class, 'product_nmID', 'nmID');
+    }
 }

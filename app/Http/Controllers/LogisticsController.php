@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon;
 use App\Models\Sku;
+use App\Models\SkuStock; // <-- ИСПРАВЛЕНИЕ ЗДЕСЬ: Правильный путь к модели
 
 class LogisticsController extends Controller
 {
@@ -108,5 +109,22 @@ class LogisticsController extends Controller
             'sortColumn' => $sortColumn,
             'sortDirection' => $sortDirection,
         ]);
+    }
+
+    public function updateStock(Request $request, SkuStock $skuStock)
+    {
+        // Валидируем только те поля, которые пришли в запросе
+        $validated = $request->validate([
+            'stock_own' => 'sometimes|required|integer|min:0',
+            'in_transit_to_wb' => 'sometimes|required|integer|min:0',
+            'in_transit_general' => 'sometimes|required|integer|min:0', // Новое поле
+            'at_factory' => 'sometimes|required|integer|min:0',         // Новое поле
+        ]);
+
+        $skuStock->update($validated);
+
+        // Возвращаем JSON-ответ для AJAX
+        // (Мы будем использовать AJAX для обновления без перезагрузки страницы)
+        return response()->json(['success' => true, 'message' => 'Остатки обновлены!']);
     }
 }

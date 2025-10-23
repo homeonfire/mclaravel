@@ -5,6 +5,65 @@
         </h2>
     </x-slot>
 
+    {{-- Alpine.js компонент для редактирования ячейки --}}
+    <script>
+        function editableCell(initialValue, updateUrl, fieldName, skuStockId) {
+            return {
+                editing: false,
+                value: initialValue,
+                originalValue: initialValue,
+                updateUrl: updateUrl,
+                fieldName: fieldName,
+                skuStockId: skuStockId,
+                errorMessage: '',
+                startEditing() {
+                    this.originalValue = this.value; // Сохраняем оригинал перед редактированием
+                    this.editing = true;
+                    this.$nextTick(() => this.$refs.input.focus()); // Фокус на поле ввода
+                },
+                cancelEditing() {
+                    this.value = this.originalValue; // Возвращаем старое значение
+                    this.editing = false;
+                    this.errorMessage = '';
+                },
+                saveValue() {
+                    this.errorMessage = '';
+                    const newValue = parseInt(this.value);
+                    if (isNaN(newValue) || newValue < 0) {
+                        this.errorMessage = 'Нужно число >= 0';
+                        return;
+                    }
+                    this.value = newValue;
+
+                    fetch(this.updateUrl, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                            'Accept': 'application/json',
+                        },
+                        body: JSON.stringify({ [this.fieldName]: this.value })
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                this.editing = false;
+                                this.originalValue = this.value;
+                                // Можно добавить уведомление
+                            } else {
+                                this.errorMessage = data.message || 'Ошибка сохранения';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            this.errorMessage = 'Ошибка сети';
+                        });
+                }
+            }
+        }
+    </script>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+
     <div class="py-12">
         <div class="max-w-full mx-auto sm:px-6 lg:px-8">
 
@@ -40,7 +99,7 @@
                 </form>
             </div>
 
-            {{-- Основная таблица с группировкой --}}
+            {{-- Основная таблица --}}
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="overflow-x-auto">
                     <table class="min-w-full">
@@ -65,16 +124,16 @@
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">От клиента</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Свой склад</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">В пути на WB</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">В пути (склад)</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">На фабрике</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Оборачиваемость</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Комментарий</th>
                         </tr>
                         </thead>
                         @forelse ($products as $product)
-                            @php
-                                $totals = $productTotals[$product->nmID] ?? null;
-                            @endphp
+                            @php $totals = $productTotals[$product->nmID] ?? null; @endphp
                             <tbody x-data="{ expanded: false }" class="border-t border-gray-200 dark:border-gray-700">
-                            {{-- ОСНОВНАЯ СТРОКА ТОВАРА С ИТОГОВЫМИ ДАННЫМИ --}}
+                            {{-- ОСНОВНАЯ СТРОКА ТОВАРА --}}
                             <tr @click="expanded = !expanded" class="cursor-pointer bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 font-bold">
                                 <td class="px-4 py-2"><button class="text-gray-500 dark:text-gray-400"><svg class="h-5 w-5 transform transition-transform" :class="{'rotate-90': expanded}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg></button></td>
                                 <td class="px-6 py-2">
@@ -92,6 +151,8 @@
                                 <td class="px-6 py-2 whitespace-nowrap text-sm text-yellow-500">{{ number_format($totals['total_in_way_from_client'] ?? 0, 0, ',', ' ') }}</td>
                                 <td class="px-6 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ number_format($totals['total_stock_own'] ?? 0, 0, ',', ' ') }}</td>
                                 <td class="px-6 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ number_format($totals['total_in_transit_to_wb'] ?? 0, 0, ',', ' ') }}</td>
+                                <td class="px-6 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ number_format($totals['total_in_transit_general'] ?? 0, 0, ',', ' ') }}</td>
+                                <td class="px-6 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ number_format($totals['total_at_factory'] ?? 0, 0, ',', ' ') }}</td>
                                 <td class="px-6 py-2 whitespace-nowrap text-sm">
                                     @if(is_null($totals['total_turnover_days'] ?? null)) <span class="text-gray-400">∞</span>
                                     @else
@@ -111,8 +172,29 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ number_format($sku->stock_wb, 0, ',', ' ') }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-500">{{ number_format($sku->in_way_to_client, 0, ',', ' ') }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-yellow-500">{{ number_format($sku->in_way_from_client, 0, ',', ' ') }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ number_format($sku->stock_own, 0, ',', ' ') }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ number_format($sku->in_transit_to_wb, 0, ',', ' ') }}</td>
+
+                                    {{-- РЕДАКТИРУЕМЫЕ ЯЧЕЙКИ --}}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-data="editableCell({{ $sku->stock_own }}, '{{ route('logistics.updateStock', $sku->id) }}', 'stock_own', {{ $sku->id }})">
+                                        <span x-show="!editing" @click="startEditing" class="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded" x-text="value"></span>
+                                        <input type="number" x-show="editing" x-ref="input" x-model="value" @keydown.enter="saveValue" @keydown.escape="cancelEditing" @click.outside="saveValue" class="w-20 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm p-1">
+                                        <p x-show="errorMessage" x-text="errorMessage" class="text-xs text-red-500"></p>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-data="editableCell({{ $sku->in_transit_to_wb }}, '{{ route('logistics.updateStock', $sku->id) }}', 'in_transit_to_wb', {{ $sku->id }})">
+                                        <span x-show="!editing" @click="startEditing" class="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded" x-text="value"></span>
+                                        <input type="number" x-show="editing" x-ref="input" x-model="value" @keydown.enter="saveValue" @keydown.escape="cancelEditing" @click.outside="saveValue" class="w-20 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm p-1">
+                                        <p x-show="errorMessage" x-text="errorMessage" class="text-xs text-red-500"></p>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-data="editableCell({{ $sku->in_transit_general }}, '{{ route('logistics.updateStock', $sku->id) }}', 'in_transit_general', {{ $sku->id }})">
+                                        <span x-show="!editing" @click="startEditing" class="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded" x-text="value"></span>
+                                        <input type="number" x-show="editing" x-ref="input" x-model="value" @keydown.enter="saveValue" @keydown.escape="cancelEditing" @click.outside="saveValue" class="w-20 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm p-1">
+                                        <p x-show="errorMessage" x-text="errorMessage" class="text-xs text-red-500"></p>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" x-data="editableCell({{ $sku->at_factory }}, '{{ route('logistics.updateStock', $sku->id) }}', 'at_factory', {{ $sku->id }})">
+                                        <span x-show="!editing" @click="startEditing" class="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded" x-text="value"></span>
+                                        <input type="number" x-show="editing" x-ref="input" x-model="value" @keydown.enter="saveValue" @keydown.escape="cancelEditing" @click.outside="saveValue" class="w-20 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm p-1">
+                                        <p x-show="errorMessage" x-text="errorMessage" class="text-xs text-red-500"></p>
+                                    </td>
+
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-bold">
                                         @if(is_null($sku->turnover_days)) <span class="text-gray-400">∞</span>
                                         @else
@@ -120,20 +202,19 @@
                                             <span class="{{ $color }}">{{ $sku->turnover_days }}</span>
                                         @endif
                                     </td>
-                                    <td></td>
+                                    <td></td> {{-- Пустая ячейка для Комментария --}}
                                 </tr>
                             @endforeach
                             </tbody>
                         @empty
                             <tbody class="bg-white dark:bg-gray-800">
-                            <tr><td colspan="10" class="p-6 text-center text-gray-500">Товары по вашим фильтрам не найдены.</td></tr>
+                            <tr><td colspan="12" class="p-6 text-center text-gray-500">Товары по вашим фильтрам не найдены.</td></tr> {{-- Обновляем colspan --}}
                             </tbody>
                         @endforelse
                     </table>
                 </div>
             </div>
 
-            {{-- Пагинация теперь работает по товарам --}}
             <div class="mt-6">
                 {{ $products->withQueryString()->links() }}
             </div>

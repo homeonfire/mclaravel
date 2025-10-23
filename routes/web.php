@@ -30,6 +30,11 @@ Route::middleware('auth')->group(function () {
     Route::patch('/products/{product}/cost-price', [ProductController::class, 'updateCostPrice'])->name('products.updateCostPrice');
 
     Route::get('/logistics', [LogisticsController::class, 'index'])->name('logistics.index');
+
+    Route::post('/products/{product}/seasonality', [ProductController::class, 'addSeasonality'])->name('products.addSeasonality');
+    Route::delete('/products/seasonality/{period}', [ProductController::class, 'deleteSeasonality'])->name('products.deleteSeasonality');
+
+    Route::patch('/logistics/sku-stock/{skuStock}', [LogisticsController::class, 'updateStock'])->name('logistics.updateStock');
 });
 
 require __DIR__.'/auth.php';
