@@ -24,6 +24,12 @@
                     <x-nav-link :href="route('logistics.index')" :active="request()->routeIs('logistics.index')">
                         {{ __('Логистика') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('import.in-transit-to-wb.show')" :active="request()->routeIs('import.in-transit-to-wb.show')">
+                        {{ __('Импорт (В пути на WB)') }}
+                    </x-nav-link>
+                    <x-nav-link :href="route('import.own-stock.show')" :active="request()->routeIs('import.own-stock.show')">
+                        {{ __('Импорт (Наш склад)') }}
+                    </x-nav-link>
                 </div>
             </div>
 

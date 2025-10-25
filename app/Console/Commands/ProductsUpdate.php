@@ -5,6 +5,8 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Dakword\WBSeller\API;
+// Убираем Exception, так как ловим Throwable
+use Throwable; // <-- Добавляем Throwable
 
 class ProductsUpdate extends Command
 {
@@ -36,17 +38,42 @@ class ProductsUpdate extends Command
                 $limit = 100;
                 $cursorUpdatedAt = '';
                 $cursorNmID = 0;
+                $storeErrorOccurred = false; // Флаг ошибки для текущего магазина
 
                 do {
                     $this->line("Запрашиваем страницу #{$page}...");
-                    $result = $contentApi->getCardsList('', $limit, $cursorUpdatedAt, $cursorNmID);
 
-                    if (isset($result->error) && $result->error) {
-                        $this->error("Ошибка API: " . $result->errorText);
-                        continue 2;
+                    // *** НАЧАЛО ИЗМЕНЕНИЙ: Оборачиваем вызов API в try...catch ***
+                    try {
+                        $result = $contentApi->getCardsList('', $limit, $cursorUpdatedAt, $cursorNmID);
+
+                        // Проверяем на стандартную ошибку API (если вернулся объект, но с полем error)
+                        if (isset($result->error) && $result->error) {
+                            $this->error("Ошибка API WB: " . ($result->errorText ?? 'Неизвестная ошибка WB'));
+                            $storeErrorOccurred = true; // Ставим флаг ошибки
+                            break; // Прерываем do...while для ЭТОГО магазина
+                        }
+
+                        // Проверяем, что ответ действительно содержит ожидаемые данные
+                        if (!isset($result->cards) || !isset($result->cursor)) {
+                            $this->error("Ошибка: API вернул некорректный формат ответа (отсутствуют cards или cursor).");
+                            // Выведем, что пришло, для отладки
+                            $this->line("Ответ API: " . json_encode($result));
+                            $storeErrorOccurred = true;
+                            break; // Прерываем do...while
+                        }
+
+                    } catch (Throwable $e) {
+                        // Ловим КРИТИЧЕСКИЕ ошибки (включая TypeError 'string returned')
+                        $this->error("Критическая ошибка при запросе к API: " . $e->getMessage());
+                        $this->error("Магазин '{$store->store_name}' будет пропущен.");
+                        $storeErrorOccurred = true; // Ставим флаг ошибки
+                        break; // Прерываем do...while для ЭТОГО магазина
                     }
+                    // *** КОНЕЦ ИЗМЕНЕНИЙ ***
 
-                    $cards = $result->cards ?? [];
+
+                    $cards = $result->cards; // Теперь мы уверены, что $result->cards существует
                     $countOnPage = count($cards);
 
                     if ($countOnPage === 0) {
@@ -58,8 +85,6 @@ class ProductsUpdate extends Command
 
                     $productsData = [];
                     foreach ($cards as $card) {
-                        // --- ИСПРАВЛЕННАЯ ЛОГИКА ЗДЕСЬ ---
-                        // Берем полную ссылку напрямую из ответа API.
                         $mainImageUrl = null;
                         if (!empty($card->photos) && is_array($card->photos) && isset($card->photos[0]->big)) {
                             $mainImageUrl = $card->photos[0]->big;
@@ -68,39 +93,52 @@ class ProductsUpdate extends Command
                         $productsData[] = [
                             'store_id' => $store->id,
                             'nmID' => $card->nmID,
-                            'imtID' => $card->imtID,
-                            'nmUUID' => $card->nmUUID,
-                            'subjectID' => $card->subjectID,
-                            'subjectName' => $card->subjectName,
+                            'imtID' => $card->imtID ?? null, // Добавляем ?? null на всякий случай
+                            'nmUUID' => $card->nmUUID ?? null,
+                            'subjectID' => $card->subjectID ?? null,
+                            'subjectName' => $card->subjectName ?? null,
                             'vendorCode' => $card->vendorCode,
-                            'brand' => $card->brand,
-                            'title' => $card->title,
-                            'main_image_url' => $mainImageUrl, // <-- Добавляем правильную ссылку
+                            'brand' => $card->brand ?? null,
+                            'title' => $card->title ?? null,
+                            'main_image_url' => $mainImageUrl,
                         ];
                     }
 
-                    DB::table('products')->upsert(
-                        $productsData,
-                        ['store_id', 'nmID'],
-                        ['imtID', 'nmUUID', 'subjectID', 'subjectName', 'vendorCode', 'brand', 'title', 'main_image_url']
-                    );
+                    // Обернем и запись в БД в try-catch на случай проблем с базой
+                    try {
+                        DB::table('products')->upsert(
+                            $productsData,
+                            ['store_id', 'nmID'],
+                            ['imtID', 'nmUUID', 'subjectID', 'subjectName', 'vendorCode', 'brand', 'title', 'main_image_url', 'updated_at' => now()] // Добавим updated_at
+                        );
+                    } catch (Throwable $dbError) {
+                        $this->error("Ошибка при записи в БД: " . $dbError->getMessage());
+                        $storeErrorOccurred = true;
+                        break; // Прерываем do...while
+                    }
 
                     $totalProcessed += $countOnPage;
                     $cursorUpdatedAt = $result->cursor->updatedAt;
                     $cursorNmID = $result->cursor->nmID;
                     $page++;
-                    sleep(1);
+                    usleep(700000); // Пауза 0.7 сек для соблюдения лимитов
 
-                } while ($countOnPage === $limit);
+                } while ($countOnPage === $limit && !$storeErrorOccurred); // Добавляем проверку флага ошибки
 
-                $this->info("Синхронизация для '{$store->store_name}' завершена. Всего обработано: {$totalProcessed} товаров.");
-            }
+                if (!$storeErrorOccurred) {
+                    $this->info("Синхронизация для '{$store->store_name}' завершена. Всего обработано: {$totalProcessed} товаров.");
+                } else {
+                    $this->warn("Обработка магазина '{$store->store_name}' прервана из-за ошибки.");
+                }
+            } // Конец foreach ($stores)
 
-            $this->info("Все магазины успешно обработаны!");
+            $this->info("\nВсе магазины успешно обработаны (или пропущены из-за ошибок)!");
             return 0;
 
-        } catch (\Exception $e) {
-            $this->error("Произошла критическая ошибка: " . $e->getMessage());
+            // Ловим только самые общие ошибки на верхнем уровне
+        } catch (Throwable $e) {
+            $this->error("Произошла НЕПРЕДВИДЕННАЯ критическая ошибка: " . $e->getMessage());
+            $this->error("Файл: " . $e->getFile() . " Строка: " . $e->getLine());
             return 1;
         }
     }

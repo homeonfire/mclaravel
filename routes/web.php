@@ -6,6 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PlanningController; // Добавьте это вверху файла
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\LogisticsController;
+use App\Http\Controllers\ExcelImportController; // Добавь вверху
 
 Route::get('/', function () {
     return view('welcome');
@@ -35,6 +36,14 @@ Route::middleware('auth')->group(function () {
     Route::delete('/products/seasonality/{period}', [ProductController::class, 'deleteSeasonality'])->name('products.deleteSeasonality');
 
     Route::patch('/logistics/sku-stock/{skuStock}', [LogisticsController::class, 'updateStock'])->name('logistics.updateStock');
+    // Маршрут для отображения страницы загрузки
+    Route::get('/import/in-transit-to-wb', [ExcelImportController::class, 'showInTransitForm'])->name('import.in-transit-to-wb.show');
+// Маршрут для обработки загрузки файла и запуска SSE
+    Route::post('/import/in-transit-to-wb', [ExcelImportController::class, 'processInTransitFile'])->name('import.in-transit-to-wb.process');
+
+    // Маршруты для "Нашего склада"
+    Route::get('/import/own-stock', [ExcelImportController::class, 'showOwnStockForm'])->name('import.own-stock.show');
+    Route::post('/import/own-stock', [ExcelImportController::class, 'processOwnStockFile'])->name('import.own-stock.process');
 });
 
 require __DIR__.'/auth.php';
