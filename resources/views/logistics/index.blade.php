@@ -133,17 +133,36 @@
                                 if (!function_exists('renderSortLink')) {
                                     function renderSortLink($label, $column, $currentSort, $currentDir) {
                                         $newDir = ($currentSort == $column && $currentDir == 'desc') ? 'asc' : 'desc';
-                                        $icon = '';
-                                        if ($currentSort == $column) { $icon = $currentDir == 'desc' ? ' ▼' : ' ▲'; }
                                         $url = route('logistics.index', array_merge(request()->query(), ['sort' => $column, 'direction' => $newDir]));
-                                        return "<a href='{$url}' class='hover:text-gray-900 dark:hover:text-white'>{$label}{$icon}</a>";
+
+                                        // Визуальные индикаторы
+                                        $icon = '↕'; // Иконка по умолчанию (двойная стрелка)
+                                        $style = 'text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-white'; // Стиль неактивной
+
+                                        if ($currentSort == $column) {
+                                            $icon = $currentDir == 'desc' ? ' ▼' : ' ▲'; // Стрелки для активной
+                                            $style = 'text-gray-900 dark:text-white'; // Стиль активной
+                                        }
+
+                                        // Добавляем класс для курсора и пунктирное подчеркивание для всех сортируемых
+                                        return "<a href='{$url}' class='{$style} cursor-pointer border-b border-dotted border-gray-400 dark:border-gray-600 pb-px'>
+                                                    <span>{$label}</span>
+                                                    <span class='ml-1'>{$icon}</span>
+                                                </a>";
                                     }
                                 }
                             @endphp
-                            <th class="w-12 px-4"></th> {{-- Width for button --}}
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{!! renderSortLink('Товар / SKU', 'title', $sortColumn, $sortDirection) !!}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{!! renderSortLink('Продаж/день', 'total_avg_daily_sales', $sortColumn, $sortDirection) !!}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{!! renderSortLink('Остаток WB', 'total_stock_wb', $sortColumn, $sortDirection) !!}</th>
+                            <th class="w-12 px-4 py-3"></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                {!! renderSortLink('Товар / SKU', 'title', $sortColumn, $sortDirection) !!}
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                {!! renderSortLink('Продаж/день', 'total_avg_daily_sales', $sortColumn, $sortDirection) !!}
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                {!! renderSortLink('Остаток WB', 'total_stock_wb', $sortColumn, $sortDirection) !!}
+                            </th>
+                            {{-- Несортируемые заголовки --}}
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">К клиенту</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">От клиента</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Свой склад</th>

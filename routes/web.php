@@ -7,6 +7,7 @@ use App\Http\Controllers\PlanningController; // Добавьте это ввер
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\LogisticsController;
 use App\Http\Controllers\ExcelImportController; // Добавь вверху
+use App\Http\Controllers\FactoryOrderController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -44,6 +45,17 @@ Route::middleware('auth')->group(function () {
     // Маршруты для "Нашего склада"
     Route::get('/import/own-stock', [ExcelImportController::class, 'showOwnStockForm'])->name('import.own-stock.show');
     Route::post('/import/own-stock', [ExcelImportController::class, 'processOwnStockFile'])->name('import.own-stock.process');
+
+    // Маршруты для импорта "Заказ с завода"
+    Route::get('/import/factory-order', [FactoryOrderController::class, 'showForm'])->name('import.factory-order.show');
+    Route::post('/import/factory-order', [FactoryOrderController::class, 'processFile'])->name('import.factory-order.process');
+
+    // Маршруты для импорта "Простой Заказ"
+    Route::get('/import/simple-order', [FactoryOrderController::class, 'showSimpleForm'])->name('import.simple-order.show');
+    Route::post('/import/simple-order', [FactoryOrderController::class, 'processSimpleFile'])->name('import.simple-order.process');
+
+    // НОВЫЙ МАРШРУТ: Страница для просмотра "Простых заказов"
+    Route::get('/factory/simple-orders', [FactoryOrderController::class, 'showSimpleOrdersList'])->name('factory.simple-orders.index');
 });
 
 require __DIR__.'/auth.php';

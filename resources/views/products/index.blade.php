@@ -65,7 +65,9 @@
                         <tr>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Фото</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Название</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Показы (актуальные)</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                Остатки WB
+                            </th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Артикул WB</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Артикул продавца</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Магазин</th>
@@ -73,7 +75,7 @@
                         </thead>
                         <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                         @forelse ($products as $product)
-                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 @if($product->latest_day_views > 0) bg-blue-50 dark:bg-blue-900/20 @endif">
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="flex-shrink-0 h-16 w-16">
                                         @if($product->main_image_url)
@@ -92,7 +94,8 @@
                                     <div class="text-sm text-gray-500 dark:text-gray-400">{{ $product->brand }}</div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-white">
-                                    {{ number_format($product->latest_day_views, 0, ',', ' ') }}
+                                    {{-- ИЗМЕНЕНИЕ: Выводим остатки WB вместо показов --}}
+                                    {{ number_format($product->total_stock_wb, 0, ',', ' ') }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ $product->nmID }}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ $product->vendorCode }}</td>

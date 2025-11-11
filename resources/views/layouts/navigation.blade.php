@@ -30,6 +30,9 @@
                     <x-nav-link :href="route('import.own-stock.show')" :active="request()->routeIs('import.own-stock.show')">
                         {{ __('Импорт (Наш склад)') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('factory.simple-orders.index')" :active="request()->routeIs('factory.simple-orders.index')">
+                        {{ __('Завод (Логистика)') }}
+                    </x-nav-link>
                 </div>
             </div>
 

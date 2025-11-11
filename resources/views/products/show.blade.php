@@ -162,32 +162,87 @@
         <div class="mx-auto sm:px-6 lg:px-8 space-y-6">
 
             {{-- Блок с основной информацией --}}
+            {{-- Блок с основной информацией --}}
             <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg p-6">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Основная информация</h3>
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400">
-                    <div><dt class="font-medium text-gray-900 dark:text-gray-100">Магазин</dt><dd>{{ $product->store->store_name ?? 'Не указан' }}</dd></div>
-                    <div><dt class="font-medium text-gray-900 dark:text-gray-100">Бренд</dt><dd>{{ $product->brand }}</dd></div>
-                    <div><dt class="font-medium text-gray-900 dark:text-gray-100">Артикул WB (nmID)</dt><dd>{{ $product->nmID }}</dd></div>
-                    <div><dt class="font-medium text-gray-900 dark:text-gray-100">Артикул продавца</dt><dd>{{ $product->vendorCode }}</dd></div>
-                    {{-- *** НОВЫЙ БЛОК ДЛЯ СЕБЕСТОИМОСТИ *** --}}
-                    <div>
-                        <dt class="font-medium text-gray-900 dark:text-gray-100">Себестоимость</dt>
 
-                        <div id="cost-price-display">
-                            <span class="font-bold text-lg text-gray-900 dark:text-white">{{ number_format($product->cost_price, 2, ',', ' ') }} ₽</span>
-                            <a href="#" id="edit-cost-price-btn" class="ml-2 text-blue-500 hover:underline text-xs">Изменить</a>
+                {{-- Макет: сетка из 2-х колонок (Аватар + Данные) --}}
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
+
+                    {{-- 1. АВАТАР ТОВАРА (Слева) --}}
+                    <div class="md:col-span-1">
+                        <div class="aspect-w-1 aspect-h-1 w-full"> {{-- Контейнер для квадратного изображения --}}
+                            @if($product->main_image_url)
+                                <img class="w-full h-full rounded-md object-cover shadow-md" src="{{ $product->main_image_url }}" alt="{{ $product->title }}">
+                            @else
+                                <div class="w-full h-full rounded-md bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs text-gray-400 shadow-md">Нет фото</div>
+                            @endif
                         </div>
 
-                        <form id="cost-price-form" action="{{ route('products.updateCostPrice', $product) }}" method="POST" class="hidden">
-                            @csrf
-                            @method('PATCH')
-                            <div class="flex items-center">
-                                <input type="number" step="0.01" name="cost_price" value="{{ $product->cost_price }}" class="block w-32 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm">
-                                <button type="submit" class="ml-2 inline-flex items-center px-3 py-1 bg-blue-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest">Сохранить</button>
-                            </div>
-                        </form>
+                        {{-- *** НОВАЯ КНОПКА "ОТКРЫТЬ НА WB" *** --}}
+                        <a href="https://www.wildberries.ru/catalog/{{ $product->nmID }}/detail.aspx"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           class="mt-3 w-full inline-flex items-center justify-center px-4 py-2 bg-purple-600 dark:bg-purple-500 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-purple-700 dark:hover:bg-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150">
+                            Открыть на WB
+                        </a>
+                        {{-- *** КОНЕЦ НОВОЙ КНОПКИ *** --}}
+
                     </div>
-                    {{-- *** КОНЕЦ НОВОГО БЛОКА *** --}}
+
+                    {{-- 2. ДАННЫЕ (Справа) --}}
+                    <div class="md:col-span-4">
+                        {{-- Сетка для мета-данных --}}
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm text-gray-600 dark:text-gray-400">
+
+                            <div>
+                                <dt class="font-medium text-gray-900 dark:text-gray-100">Магазин</dt>
+                                <dd>{{ $product->store->store_name ?? 'Не указан' }}</dd>
+                            </div>
+                            <div>
+                                <dt class="font-medium text-gray-900 dark:text-gray-100">Бренд</dt>
+                                <dd>{{ $product->brand }}</dd>
+                            </div>
+                            <div>
+                                <dt class="font-medium text-gray-900 dark:text-gray-100">Артикул WB (nmID)</dt>
+                                <dd>{{ $product->nmID }}</dd>
+                            </div>
+                            <div>
+                                <dt class="font-medium text-gray-900 dark:text-gray-100">Артикул продавца</dt>
+                                <dd>{{ $product->vendorCode }}</dd>
+                            </div>
+
+                            {{-- БЛОК СЕБЕСТОИМОСТИ --}}
+                            <div class="md:col-span-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <dt class="font-medium text-gray-900 dark:text-gray-100">Себестоимость</dt>
+
+                                <div id="cost-price-display" class="flex items-center space-x-3 mt-1">
+                                    <span class="font-bold text-lg text-gray-900 dark:text-white">{{ number_format($product->cost_price, 2, ',', ' ') }} ₽</span>
+                                    <a href="#" id="edit-cost-price-btn" class="text-blue-500 hover:underline text-xs">Изменить</a>
+                                </div>
+
+                                <form id="cost-price-form" action="{{ route('products.updateCostPrice', $product) }}" method="POST" class="hidden mt-1">
+                                    @csrf
+                                    @method('PATCH')
+                                    <div class="flex items-center">
+                                        <input type="number" step="0.01" name="cost_price" value="{{ $product->cost_price }}" class="block w-32 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 shadow-sm text-sm">
+                                        <button type="submit" class="ml-2 inline-flex items-center px-3 py-1 bg-blue-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest">Сохранить</button>
+                                    </div>
+                                </form>
+                            </div>
+
+                        </div>
+                        {{-- *** НОВЫЙ БЛОК: БЫСТРЫЕ ПЕРЕХОДЫ *** --}}
+                        <div class="md:col-span-5 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                            <dt class="font-medium text-gray-900 dark:text-gray-100 mb-2">Быстрые переходы</d>
+                            <dd class="flex flex-wrap gap-2">
+                                <a href="#yesterday" class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-xs font-medium hover:bg-gray-200 dark:hover:bg-gray-600">Сводка за вчера</a>
+                                <a href="#svodnaya" class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-xs font-medium hover:bg-gray-200 dark:hover:bg-gray-600">Сводный отчет</a>
+                                <a href="#logistic" class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-xs font-medium hover:bg-gray-200 dark:hover:bg-gray-600">Логистика SKU</a>
+                            </dd>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
@@ -246,7 +301,7 @@
 
             {{-- Блок со сводкой за вчерашний день --}}
             @if($yesterdayStats)
-                <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg p-6">
+                <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg p-6" id="yesterday">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Ключевые показатели за вчера ({{ \Carbon\Carbon::parse($yesterdayStats->report_date)->format('d.m.Y') }})</h3>
                     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
                         {!! render_summary_card('Переходы', $yesterdayStats->openCardCount, $dayBeforeYesterdayStats->openCardCount ?? 0) !!}
@@ -327,7 +382,7 @@
             </div>
 
             {{-- Блок со сводной таблицей с ВЫБОРОМ ПЕРИОДА --}}
-            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6">
+            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6" id="svodnaya">
                 <form method="GET" action="{{ route('products.show', $product->nmID) }}" class="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
                     <input type="hidden" name="plan_month" value="{{ $selectedPlanMonth }}">
                     <input type="hidden" name="ad_start_date" value="{{ $adStartDate }}">
@@ -424,9 +479,8 @@
             </div>
 
             {{-- *** НОВЫЙ БЛОК: Агрегированная статистика по рекламе с выбором периода *** --}}
-            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6">
+            {{-- }}<div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6">
 
-                {{-- Форма для выбора периода --}}
                 <form method="GET" action="{{ route('products.show', $product->nmID) }}#ad-stats-table" class="mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
                     <input type="hidden" name="plan_month" value="{{ $selectedPlanMonth }}">
                     <input type="hidden" name="start_date" value="{{ $startDate }}">
@@ -498,11 +552,11 @@
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </div> --}}
 
             {{-- *** НОВЫЙ БЛОК: ЛОГИСТИКА ПО SKU *** --}}
 
-                    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
+                    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg" id="logistic">
                         <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 p-6 border-b border-gray-200 dark:border-gray-700">
                             Остатки и логистика по размерам (SKU)
                         </h3>

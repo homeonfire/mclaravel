@@ -17,42 +17,36 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
-        // 1. Получаем все параметры для фильтрации, включая новый флаг
+        // 1. Получаем все параметры фильтров
         $searchQuery = $request->input('search');
         $storeId = $request->input('store_id');
-        $withActiveCampaign = $request->boolean('with_active_campaign'); // Удобный метод для получения true/false
-        $showActiveOnly = $request->boolean('show_active_only'); // <-- НОВЫЙ ПАРАМЕТР
+        $withActiveCampaign = $request->boolean('with_active_campaign');
+        $showActiveOnly = $request->boolean('show_active_only'); // <-- ВОЗВРАЩАЕМ ЭТУ СТРОКУ
 
-        // 2. Получаем список всех магазинов для выпадающего списка
+        // 2. Получаем список магазинов
         $stores = DB::table('stores')->orderBy('store_name')->get();
 
-        // 3. Создаем подзапрос для получения статистики за последнюю доступную дату
-        $latestStatsSubquery = DB::table('behavioral_stats as bs1')
-            ->select('bs1.nmID', 'bs1.store_id', 'bs1.openCardCount')
-            ->join(DB::raw('(SELECT nmID, store_id, MAX(report_date) as max_date FROM behavioral_stats GROUP BY nmID, store_id) as bs2'), function($join) {
-                $join->on('bs1.nmID', '=', 'bs2.nmID')
-                    ->on('bs1.store_id', '=', 'bs2.store_id')
-                    ->on('bs1.report_date', '=', 'bs2.max_date');
-            });
+        // 3. Подзапрос для суммирования остатков WB
+        $wbStockSubquery = DB::table('skus')
+            ->join('sku_warehouse_stocks', 'skus.barcode', '=', 'sku_warehouse_stocks.sku_barcode')
+            ->select('skus.product_nmID', DB::raw('SUM(sku_warehouse_stocks.quantity) as total_stock_wb'))
+            ->groupBy('skus.product_nmID');
 
-        // 4. Строим основной запрос
+        // 4. Основной запрос
         $productsQuery = Product::with('store')
-            ->leftJoinSub($latestStatsSubquery, 'latest_stats', function ($join) {
-                $join->on('products.nmID', '=', 'latest_stats.nmID')
-                    ->on('products.store_id', '=', 'latest_stats.store_id');
+            ->leftJoinSub($wbStockSubquery, 'wb_stock', function ($join) {
+                $join->on('products.nmID', '=', 'wb_stock.product_nmID');
             })
-            ->select('products.*', DB::raw('COALESCE(latest_stats.openCardCount, 0) as latest_day_views'))
+            ->select('products.*', DB::raw('COALESCE(wb_stock.total_stock_wb, 0) as total_stock_wb'))
+
+            // Фильтры
             ->when($searchQuery, function ($query, $search) {
                 return $query->where('products.vendorCode', 'like', "%{$search}%");
             })
             ->when($storeId, function ($query, $storeId) {
                 return $query->where('products.store_id', $storeId);
             })
-            // *** НОВЫЙ ФИЛЬТР ЗДЕСЬ ***
             ->when($withActiveCampaign, function ($query) {
-                // Используем WHERE EXISTS для эффективного отбора товаров,
-                // которые существуют в таблице ad_campaign_products и связаны
-                // с кампанией в статусе 9 (активна).
                 return $query->whereExists(function ($subQuery) {
                     $subQuery->select(DB::raw(1))
                         ->from('ad_campaign_products as acp')
@@ -62,29 +56,30 @@ class ProductController extends Controller
                         })
                         ->whereColumn('acp.nmID', 'products.nmID')
                         ->whereColumn('acp.store_id', 'products.store_id')
-                        ->where('ac.status', 9); // 9 = AdvertStatus::PLAY (активна)
+                        ->where('ac.status', 9);
                 });
             })
+
+            // *** ВОЗВРАЩАЕМ ФИЛЬТР "ПОКАЗАТЬ АКТУАЛЬНЫЕ" ***
             ->when($showActiveOnly, function ($query) {
                 $currentMonth = Carbon::now()->month;
-                // Используем WHERE EXISTS для проверки наличия хотя бы одного
-                // подходящего периода в связанной таблице seasonality
                 return $query->whereExists(function ($subQuery) use ($currentMonth) {
                     $subQuery->select(DB::raw(1))
                         ->from('product_seasonality')
                         ->whereColumn('product_seasonality.product_nmID', 'products.nmID')
-                        // Учитываем периоды, которые "переходят" через год (например, Ноябрь - Февраль)
                         ->where(function ($periodQuery) use ($currentMonth) {
-                            // Случай 1: Период в рамках одного года (Март - Август)
                             $periodQuery->whereRaw('start_month <= end_month AND ? BETWEEN start_month AND end_month', [$currentMonth])
-                                // Случай 2: Период переходит через год (Ноябрь - Февраль)
                                 ->orWhereRaw('start_month > end_month AND (? >= start_month OR ? <= end_month)', [$currentMonth, $currentMonth]);
                         });
                 });
-            });
+            })
 
-        // 5. Сортируем и разбиваем на страницы
-        $products = $productsQuery->orderBy('latest_day_views', 'desc')
+            // Фильтр по ненулевым остаткам (как договорились)
+            ->where(DB::raw('COALESCE(wb_stock.total_stock_wb, 0)'), '>', 0);
+
+
+        // 5. Сортировка и пагинация
+        $products = $productsQuery->orderBy('total_stock_wb', 'desc')
             ->orderBy('products.updated_at', 'desc')
             ->paginate(30);
 
@@ -92,8 +87,8 @@ class ProductController extends Controller
             'products' => $products,
             'stores' => $stores,
             'selectedStoreId' => $storeId,
-            'withActiveCampaign' => $withActiveCampaign, // Передаем состояние фильтра в представление
-            'showActiveOnly' => $showActiveOnly,
+            'withActiveCampaign' => $withActiveCampaign,
+            'showActiveOnly' => $showActiveOnly, // <-- ВОЗВРАЩАЕМ ПЕРЕДАЧУ В VIEW
         ]);
     }
 
@@ -307,10 +302,11 @@ class ProductController extends Controller
         }
 
         // --- 7. ДАННЫЕ ДЛЯ БЛОКА ЛОГИСТИКИ ПО SKU ---
-// Используем даты из основного фильтра "Отчет за произвольный период"
-// $startDate и $endDate уже определены выше в методе
+// --- 7. *** ИСПРАВЛЕНИЕ ЗДЕСЬ: ДАННЫЕ ДЛЯ БЛОКА ЛОГИСТИКИ ПО SKU *** ---
+        // Используем даты из фильтра "Отчет за произвольный период" ($startDate, $endDate)
         $durationInDaysSku = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) + 1;
 
+        // Подзапрос 1: Темп продаж по баркодам
         $salesPaceSubquerySku = DB::table('sales_raw')
             ->select('barcode', DB::raw("COUNT(*) / {$durationInDaysSku} as avg_daily_sales"))
             ->where('saleID', 'like', 'S%')
@@ -318,24 +314,48 @@ class ProductController extends Controller
             ->whereBetween(DB::raw('DATE(date)'), [$startDate, $endDate])
             ->groupBy('barcode');
 
+        // Подзапрос 2: Суммарные остатки WB по баркодам
+        $warehouseTotalsSubquerySku = DB::table('sku_warehouse_stocks')
+            ->select(
+                'sku_barcode',
+                DB::raw('SUM(quantity) as total_stock_wb'),
+                DB::raw('SUM(in_way_to_client) as total_in_way_to_client'),
+                DB::raw('SUM(in_way_from_client) as total_in_way_from_client')
+            )
+            ->whereIn('sku_barcode', function($query) use ($product) {
+                // Выбираем баркоды только этого товара
+                $query->select('barcode')->from('skus')->where('product_nmID', $product->nmID);
+            })
+            ->groupBy('sku_barcode');
+
+        // Основной запрос: Собираем все данные по SKU для этого товара
         $skusForProduct = Sku::query()
-            ->join('sku_stocks', 'skus.barcode', '=', 'sku_stocks.sku_barcode')
-            ->leftJoinSub($salesPaceSubquerySku, 'sales_pace', 'skus.barcode', '=', 'sales_pace.barcode')
-            ->where('skus.product_nmID', $product->nmID)
+            ->join('sku_stocks', 'skus.barcode', '=', 'sku_stocks.sku_barcode') // Ручные остатки
+            ->leftJoinSub($salesPaceSubquerySku, 'sales_pace', 'skus.barcode', '=', 'sales_pace.barcode') // Продажи
+            ->leftJoinSub($warehouseTotalsSubquerySku, 'warehouse_totals', 'skus.barcode', '=', 'warehouse_totals.sku_barcode') // Остатки WB
+            ->where('skus.product_nmID', $product->nmID) // Только этот товар
             ->select(
                 'skus.barcode', 'skus.tech_size',
-                'sku_stocks.*', // Выбираем все поля из sku_stocks, включая id
-                DB::raw('COALESCE(sales_pace.avg_daily_sales, 0) as avg_daily_sales')
+                'sku_stocks.id', // ID из sku_stocks для редактирования
+                'sku_stocks.stock_own',
+                'sku_stocks.in_transit_to_wb',
+                'sku_stocks.in_transit_general',
+                'sku_stocks.at_factory',
+                DB::raw('COALESCE(sales_pace.avg_daily_sales, 0) as avg_daily_sales'),
+                DB::raw('COALESCE(warehouse_totals.total_stock_wb, 0) as stock_wb'),
+                DB::raw('COALESCE(warehouse_totals.total_in_way_to_client, 0) as in_way_to_client'),
+                DB::raw('COALESCE(warehouse_totals.total_in_way_from_client, 0) as in_way_from_client')
             )
-            ->orderBy('skus.tech_size', 'asc') // Сортируем по размеру
+            ->orderBy('skus.tech_size', 'asc')
             ->get();
 
-// Рассчитываем оборачиваемость для каждого SKU
+        // Рассчитываем оборачиваемость для каждого SKU
         $skusForProduct->transform(function ($sku) {
             $totalStock = $sku->stock_wb + $sku->stock_own;
             $sku->turnover_days = ($sku->avg_daily_sales > 0) ? floor($totalStock / $sku->avg_daily_sales) : null;
             return $sku;
         });
+        // --- КОНЕЦ БЛОКА ЛОГИСТИКИ ПО SKU ---
 // --- КОНЕЦ БЛОКА ЛОГИСТИКИ ПО SKU ---
 
         return view('products.show', [
